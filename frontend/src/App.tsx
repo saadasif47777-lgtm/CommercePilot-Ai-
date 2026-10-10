@@ -1,0 +1,63 @@
+import { useState } from 'react'
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ProjectProvider } from './state/ProjectContext'
+import { Sidebar, TopBar } from './components/Layout'
+import { OverviewPage } from './pages/Overview'
+import { AssistantPage } from './pages/AssistantPage'
+import { ProductHunterPage } from './pages/ProductHunterPage'
+import { StoreArchitectPage } from './pages/StoreArchitectPage'
+import { MarketingPage } from './pages/MarketingPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
+import { HistoryPage } from './pages/HistoryPage'
+import { SettingsPage } from './pages/SettingsPage'
+
+function Shell() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+
+  return (
+    <div className="min-h-screen bg-mist">
+      <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <div className="lg:pl-[248px]">
+        <TopBar onMenu={() => setMenuOpen(true)} />
+        <main className="px-4 py-6 lg:px-7 lg:py-7">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+            >
+              <Routes location={location}>
+                <Route path="/" element={<OverviewPage />} />
+                <Route path="/assistant" element={<AssistantPage />} />
+                <Route path="/products" element={<ProductHunterPage />} />
+                <Route path="/store" element={<StoreArchitectPage />} />
+                <Route path="/marketing" element={<MarketingPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/history" element={<HistoryPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="*" element={<OverviewPage />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <footer className="px-6 pb-6 pt-2 text-center text-[11px] text-muted">
+          CommercePilot AI — competition prototype. Demo data is labelled throughout · Meta &amp; Shopify: not connected · calculations are real Python.
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <ProjectProvider>
+        <Shell />
+      </ProjectProvider>
+    </BrowserRouter>
+  )
+}

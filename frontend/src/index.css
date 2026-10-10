@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0b0b;
+  --color-brand: #0f3d2e;
+  --color-brand-700: #14523d;
+  --color-brand-300: #9dc6b4;
+  --color-accent: #2ecc71;
+  --color-accent-dark: #1f9d57;
+  --color-paper: #ffffff;
+  --color-mist: #f5f6f5;
+  --color-mist-2: #eef0ee;
+  --color-line: #e3e6e3;
+  --color-muted: #6b7280;
+  --color-gold: #c9a227;
+  --color-warn: #b45309;
+  --color-danger: #b91c1c;
+
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --shadow-soft: 0 1px 2px rgba(11, 11, 11, 0.04), 0 8px 24px rgba(11, 11, 11, 0.05);
+  --shadow-lift: 0 2px 4px rgba(11, 11, 11, 0.05), 0 16px 40px rgba(11, 11, 11, 0.09);
+
+  --animate-fade-in: fade-in 0.35s ease both;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--color-mist);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+::selection { background: #2ecc7133; }
+
+/* thin, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #cfd4cf transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb { background: #cfd4cf; border-radius: 8px; border: 2px solid var(--color-mist); }
+
+.dot-pulse { animation: pulse-dot 1.4s ease-in-out infinite; }
+.skeleton {
+  background: linear-gradient(90deg, #eceeed 25%, #f6f7f6 50%, #eceeed 75%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }

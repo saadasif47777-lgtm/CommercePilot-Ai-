@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Secrets / local config
+.env
+backend/.secrets/
+*.sqlite3
+backend/*.db
+
+# Node
+node_modules/
+frontend/dist/
+.vite/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Runtime artifacts
+frontend_dev.log
+backend_server.log
+*.pid

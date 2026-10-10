@@ -1,0 +1,291 @@
+{
+  "meta": {
+    "dataset_name": "CommercePilot Demo Catalog",
+    "version": "1.0",
+    "is_sample_data": true,
+    "disclaimer": "DEMO / SAMPLE DATA. All products, prices, costs, demand signals and competition notes in this file are illustrative examples created for the CommercePilot AI competition prototype. They do NOT represent current real-world demand, verified supplier quotes or live market prices.",
+    "currency": "PKR"
+  },
+  "products": [
+    {
+      "id": "sample-001",
+      "title": "Vitamin C Brightening Serum 30ml",
+      "description": "Lightweight vitamin C serum aimed at dullness and uneven tone. Popular starter SKU for a skincare brand because it is small, light and easy to ship.",
+      "category": "skincare",
+      "observed_price": 2499,
+      "estimated_cost": 820,
+      "audience_fit": 88,
+      "price_suitability": 92,
+      "competition": "medium",
+      "demand_level": "high",
+      "audience_tags": ["women 18-34", "urban", "skincare", "gift"],
+      "constraints_tags": ["fragile", "small parcel"],
+      "signals": [
+        {"label": "Sample: retailer shelf presence", "value": "widely listed", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: repeat purchase potential", "value": "high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-002",
+      "title": "Niacinamide 5% + Zinc Oil-Control Serum",
+      "description": "Oil-control serum for acne-prone skin. Strong fit for a young adult audience and a frequent repeat purchase.",
+      "category": "skincare",
+      "observed_price": 1999,
+      "estimated_cost": 640,
+      "audience_fit": 84,
+      "price_suitability": 95,
+      "competition": "high",
+      "demand_level": "high",
+      "audience_tags": ["women 18-30", "men 18-30", "acne-prone", "students"],
+      "constraints_tags": ["fragile"],
+      "signals": [
+        {"label": "Sample: community discussion volume", "value": "high", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: repeat purchase potential", "value": "high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-003",
+      "title": "Ceramide Barrier Repair Moisturiser 50g",
+      "description": "Barrier-repair moisturiser positioned as a gentle daily staple. Heavier jar packaging increases unit weight.",
+      "category": "skincare",
+      "observed_price": 2899,
+      "estimated_cost": 1050,
+      "audience_fit": 76,
+      "price_suitability": 82,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["women 25-40", "sensitive skin", "winter care"],
+      "constraints_tags": ["heavy parcel"],
+      "signals": [
+        {"label": "Sample: seasonal lift", "value": "winter peak", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-004",
+      "title": "Overnight Hydrating Lip Mask (2-pack)",
+      "description": "Small consumable lip mask bundled as a pair. Low unit cost, strong add-on or impulse-buy characteristics.",
+      "category": "skincare",
+      "observed_price": 1299,
+      "estimated_cost": 380,
+      "audience_fit": 80,
+      "price_suitability": 88,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["women 16-30", "gift", "impulse buy"],
+      "constraints_tags": ["small parcel"],
+      "signals": [
+        {"label": "Sample: bundle potential", "value": "good", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-005",
+      "title": "Ribbed Ceramic Vase (25cm, matte finish)",
+      "description": "Neutral ribbed ceramic vase for modern home styling. Photogenic and popular in living-room content, but breakable.",
+      "category": "home accessories",
+      "observed_price": 3499,
+      "estimated_cost": 1450,
+      "audience_fit": 72,
+      "price_suitability": 74,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["home decor", "new homeowners", "women 25-45"],
+      "constraints_tags": ["breakable", "heavy parcel"],
+      "signals": [
+        {"label": "Sample: content friendliness", "value": "high", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: return risk", "value": "elevated (breakable)", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-006",
+      "title": "Woven Storage Basket Set (3 pcs)",
+      "description": "Set of three woven cotton storage baskets. Practical, giftable and ships without breakage risk.",
+      "category": "home accessories",
+      "observed_price": 4299,
+      "estimated_cost": 1900,
+      "audience_fit": 70,
+      "price_suitability": 66,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["home organization", "new homeowners", "parents"],
+      "constraints_tags": ["bulky"],
+      "signals": [
+        {"label": "Sample: utility demand", "value": "steady", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-007",
+      "title": "LED Sunset Projection Lamp",
+      "description": "USB-powered sunset projection lamp. Strong visual appeal for short-form video, but crowded market segment.",
+      "category": "home accessories",
+      "observed_price": 2799,
+      "estimated_cost": 990,
+      "audience_fit": 78,
+      "price_suitability": 84,
+      "competition": "high",
+      "demand_level": "high",
+      "audience_tags": ["students", "gen z", "room decor"],
+      "constraints_tags": ["electronics", "fragile"],
+      "signals": [
+        {"label": "Sample: short-form video trend", "value": "strong", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: saturation risk", "value": "high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-008",
+      "title": "Minimalist Stainless Steel Chain Necklace",
+      "description": "Everyday stainless steel chain, tarnish resistant. Lightweight, high margin potential, strong gift positioning.",
+      "category": "fashion accessories",
+      "observed_price": 1799,
+      "estimated_cost": 470,
+      "audience_fit": 82,
+      "price_suitability": 90,
+      "competition": "high",
+      "demand_level": "high",
+      "audience_tags": ["women 18-34", "men 18-34", "gift", "unisex"],
+      "constraints_tags": ["small parcel"],
+      "signals": [
+        {"label": "Sample: gift-season lift", "value": "high", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: repeat purchase potential", "value": "medium", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-009",
+      "title": "Oversized PU Leather Tote Bag",
+      "description": "Structured vegan-leather tote with laptop compartment. Strong utility + style story for students and professionals.",
+      "category": "fashion accessories",
+      "observed_price": 4999,
+      "estimated_cost": 2100,
+      "audience_fit": 86,
+      "price_suitability": 70,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["women 20-38", "students", "professionals"],
+      "constraints_tags": ["bulky"],
+      "signals": [
+        {"label": "Sample: back-to-season lift", "value": "medium-high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-010",
+      "title": "Silk-feel Scrunchie & Hair Clip Set",
+      "description": "Affordable hair accessory bundle. Very low unit cost, useful as an AOV booster or free-gift incentive.",
+      "category": "fashion accessories",
+      "observed_price": 999,
+      "estimated_cost": 260,
+      "audience_fit": 74,
+      "price_suitability": 86,
+      "competition": "high",
+      "demand_level": "medium",
+      "audience_tags": ["women 16-30", "students", "impulse buy"],
+      "constraints_tags": ["small parcel"],
+      "signals": [
+        {"label": "Sample: bundle potential", "value": "high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-011",
+      "title": "Foldable Resistance Band Kit (5 pcs)",
+      "description": "Home-workout resistance bands with handles and ankle straps. Light, complete kit, broad beginner appeal.",
+      "category": "fitness",
+      "observed_price": 3299,
+      "estimated_cost": 1150,
+      "audience_fit": 80,
+      "price_suitability": 78,
+      "competition": "medium",
+      "demand_level": "high",
+      "audience_tags": ["home fitness", "beginners", "women 20-40", "men 20-40"],
+      "constraints_tags": ["light parcel"],
+      "signals": [
+        {"label": "Sample: new-year demand pattern", "value": "seasonal spike", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: content demo potential", "value": "high", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-012",
+      "title": "Smart Fitness Bottle with Hydration Reminders",
+      "description": "Insulated bottle with LED hydration reminder cap. Novelty factor is high, but electronics raise defect risk.",
+      "category": "fitness",
+      "observed_price": 4599,
+      "estimated_cost": 2350,
+      "audience_fit": 68,
+      "price_suitability": 62,
+      "competition": "low",
+      "demand_level": "low",
+      "audience_tags": ["home fitness", "gadgets", "professionals"],
+      "constraints_tags": ["electronics", "fragile"],
+      "signals": [
+        {"label": "Sample: novelty positioning", "value": "differentiated", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: return risk", "value": "elevated (battery)", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-013",
+      "title": "Anti-Slip Yoga Mat 6mm (carry strap)",
+      "description": "Beginner yoga mat with carry strap. Reliable evergreen demand with moderate competition.",
+      "category": "fitness",
+      "observed_price": 3799,
+      "estimated_cost": 1620,
+      "audience_fit": 77,
+      "price_suitability": 72,
+      "competition": "medium",
+      "demand_level": "medium",
+      "audience_tags": ["home fitness", "yoga", "beginners"],
+      "constraints_tags": ["bulky"],
+      "signals": [
+        {"label": "Sample: evergreen demand", "value": "steady", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-014",
+      "title": "65W GaN Fast Charger (2-port)",
+      "description": "Compact GaN charger for phone and laptop. Strong utility, high trust requirement for electronics sellers.",
+      "category": "electronics accessories",
+      "observed_price": 5499,
+      "estimated_cost": 3100,
+      "audience_fit": 74,
+      "price_suitability": 64,
+      "competition": "medium",
+      "demand_level": "high",
+      "audience_tags": ["students", "professionals", "travelers", "gadgets"],
+      "constraints_tags": ["electronics", "warranty risk"],
+      "signals": [
+        {"label": "Sample: utility demand", "value": "high", "evidence": "demo dataset entry (sample)"},
+        {"label": "Sample: trust barrier", "value": "warranty needed", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-015",
+      "title": "Magnetic Wireless Power Bank 10,000mAh",
+      "description": "Slim magnetic power bank. Premium price point and strong travel positioning, but crowded category.",
+      "category": "electronics accessories",
+      "observed_price": 6299,
+      "estimated_cost": 3650,
+      "audience_fit": 72,
+      "price_suitability": 58,
+      "competition": "high",
+      "demand_level": "medium",
+      "audience_tags": ["travelers", "professionals", "gadgets"],
+      "constraints_tags": ["electronics", "battery shipping"],
+      "signals": [
+        {"label": "Sample: travel-season lift", "value": "medium", "evidence": "demo dataset entry (sample)"}
+      ]
+    },
+    {
+      "id": "sample-016",
+      "title": "Wireless Sleep Headband Speaker",
+      "description": "Bluetooth sleep headband for side sleepers. Niche but differentiated, with modest competition.",
+      "category": "electronics accessories",
+      "observed_price": 3999,
+      "estimated_cost": 1950,
+      "audience_fit": 66,
+      "price_suitability": 70,
+      "competition": "low",
+      "demand_level": "low",
+      "audience_tags": ["travelers", "students", "gadgets", "sleep"],
+      "constraints_tags": ["electronics"],
+      "signals": [
+        {"label": "Sample: niche differentiation", "value": "good", "evidence": "demo dataset entry (sample)"}
+      ]
+    }
+  ]
+}
