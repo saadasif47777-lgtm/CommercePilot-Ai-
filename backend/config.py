@@ -10,7 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
-DB_PATH = BACKEND_DIR / "commercepilot.sqlite3"
 SECRETS_DIR = BACKEND_DIR / ".secrets"  # git-ignored, for optional integration credentials
 
 
@@ -42,6 +41,13 @@ def env(name: str, default: str = "") -> str:
 def env_bool(name: str, default: bool = False) -> bool:
     return env(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
 
+
+# --- Storage -------------------------------------------------------------- #
+# SQLite location. Override with DB_PATH to use a mounted persistent disk on a
+# hosting platform (the default is next to the code, which is ephemeral there).
+DB_PATH = Path(env("DB_PATH", str(BACKEND_DIR / "commercepilot.sqlite3"))).expanduser()
+if DB_PATH.parent and not DB_PATH.parent.exists():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # --- Optional LLM --------------------------------------------------------- #
 OPENAI_API_KEY = env("OPENAI_API_KEY")

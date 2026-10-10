@@ -7,13 +7,22 @@ __pycache__/
 
 # Secrets / local config
 .env
+.env.*
+!.env.example
 backend/.secrets/
 *.sqlite3
-backend/*.db
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+
+# Local databases
+*.sqlite
 
 # Node
 node_modules/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
 .vite/
 
 # Editors / OS

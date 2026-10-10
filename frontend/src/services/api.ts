@@ -1,6 +1,12 @@
 // Typed API client for the CommercePilot AI backend.
-// All requests go through same-origin /api (Vite proxies to FastAPI), so the
-// browser never points at localhost directly.
+//
+// The base URL comes from the VITE_API_BASE_URL environment variable:
+//   - Local development: leave it unset (empty). Requests go to same-origin
+//     /api and the Vite dev server proxies them to FastAPI on 127.0.0.1:8000.
+//   - Production: set VITE_API_BASE_URL to the deployed backend origin
+//     (e.g. https://commercepilot-ai.onrender.com) with NO trailing slash.
+// The browser never hard-codes localhost; the only localhost reference in the
+// project is the Vite dev proxy target, which is server-side dev config.
 
 import type {
   AnalysisResult, AssistantReply, ScenarioInput, BusinessBrief, CampaignPlan, IntegrationStatus,
@@ -18,15 +24,29 @@ export class ApiError extends Error {
   }
 }
 
+// Deployed backend origin, stripped of trailing slashes. Empty string means
+// "same-origin" (development proxy).
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, {
+    res = await fetch(`${API_BASE}${path}`, {
       headers: { 'content-type': 'application/json' },
       ...init,
     })
   } catch {
-    throw new ApiError(0, 'Backend unreachable. Is the API server running on port 8000?')
+    throw new ApiError(0, API_BASE
+      ? `Backend unreachable at ${API_BASE}. Is the API service running?`
+      : 'Backend unreachable. Is the API server running on port 8000?')
+  }
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('text/html')) {
+    // An HTML response for an /api path means the base URL is wrong (the
+    // frontend host answered instead of the backend).
+    throw new ApiError(res.status,
+      `API base URL looks wrong: ${API_BASE || '(empty - same-origin)'} returned an HTML page for ${path}. ` +
+      'Set VITE_API_BASE_URL to the deployed backend origin.')
   }
   if (!res.ok) {
     let detail: unknown = `HTTP ${res.status}`
@@ -108,7 +128,7 @@ export const api = {
     post<{ saved: boolean; verified: boolean; detail: string }>('/api/integrations/shopify/credentials', payload),
   shopifySync: (limit = 10) => post<{ ok: boolean; detail?: string; count?: number; products?: unknown[] }>('/api/integrations/shopify/sync'),
 
-  storeExportUrl: (id: string) => `/api/projects/${id}/store/export`,
+  storeExportUrl: (id: string) => `${API_BASE}/api/projects/${id}/store/export`,
 }
 
 export function errorText(err: unknown): string {

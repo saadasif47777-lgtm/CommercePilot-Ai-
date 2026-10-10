@@ -43,6 +43,16 @@ Open http://localhost:3000 → **Example Project** → **Run Full Commerce Workf
 > The Vite dev server proxies `/api` to the backend, so the browser only ever
 > talks to one origin. Use `VITE_API_TARGET` if the backend is elsewhere.
 
+### Production build (local check)
+
+```bash
+.venv/bin/python -m pytest tests/ -q          # 111 tests
+cd frontend && npm run build                  # type-check + bundle
+VITE_API_BASE_URL=https://<backend-host> npm run build   # bake in the API origin
+```
+
+For hosting (GitHub → Vercel + Render), follow **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
 ### 60-second demo script (for judges)
 
 1. **Example Project** (top-right) — Noor Glow, a Pakistani skincare brand, PKR 30,000 budget.
@@ -58,6 +68,10 @@ Open http://localhost:3000 → **Example Project** → **Run Full Commerce Workf
 ```bash
 .venv/bin/python -m pytest tests/ -q     # 111 tests: calculations, hunter, workflow, API
 cd frontend && npm run build             # type-checks + production build
+
+# Deployment smoke test - run against any environment (local or deployed):
+.venv/bin/python scripts/verify_deployment.py \
+    --backend http://127.0.0.1:8000 --frontend http://localhost:3000
 ```
 
 The suite covers: ranking with known and missing data, gross profit/margin,
@@ -88,7 +102,10 @@ frontend/src/
   pages/ components/     8 app sections + storefront renderer, charts, chat
   state/                 ProjectContext (shared project state)
 tests/                   111 automated tests
+scripts/                 verify_deployment.py (deployment smoke test)
 docs/                    architecture.md, manual-testing.md
+render.yaml              Render backend blueprint (optional, mirrors dashboard)
+frontend/vercel.json     Vercel SPA rewrite
 ```
 
 ## Honesty policy
@@ -98,15 +115,35 @@ docs/                    architecture.md, manual-testing.md
 * Simulations state their assumptions and are never presented as platform data.
 * No secrets in the repo: `.env` is git-ignored; integration credentials save to `backend/.secrets/` (also git-ignored) and are masked in every response.
 
-## Deployment note
+## Deployment
 
-This environment's static hosting (Cloudflare Workers) does not run Python, so
-the app runs as a local persistent stack (FastAPI + Vite) — the preview URL
-above serves the full working application. The backend logic is standard
-FastAPI and ports to any Python host (Railway, Render, Fly.io, a VM) unchanged.
+The app deploys as two services joined by one variable — full step-by-step
+settings, free-tier limits and troubleshooting are in
+**[DEPLOYMENT.md](DEPLOYMENT.md)**:
+
+* **Frontend** → Vercel, Root Directory `frontend`, build `npm run build`,
+  output `dist`, env var `VITE_API_BASE_URL` = the backend origin.
+* **Backend** → Render, repo root, build `pip install -r requirements.txt`,
+  start `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`, health check
+  `/api/health`, env var `CORS_ORIGINS` = the frontend origin.
+
+**Honesty notes for the deployed app:**
+
+* Render's free instance has **no persistent disk** — SQLite project data resets
+  when the service restarts or redeploys. The sidebar's **Example Project**
+  button rebuilds the demo state in one click.
+* A free instance spins down after 15 idle minutes; the first request takes
+  ~1 minute to wake it, so open the site before you present.
+* The in-repo `render.yaml` and `frontend/vercel.json` mirror the dashboard
+  settings above; no deployed URL is hard-coded anywhere in this repository.
+
+This local preview environment (Cloudflare Workers) cannot run Python, so the
+live preview here is a local persistent stack rather than a public deployment.
 
 ## Docs
 
 * [proposal.md](proposal.md) — competition proposal
+* [DEPLOYMENT.md](DEPLOYMENT.md) — deploying to Vercel + Render (settings, limits, troubleshooting)
 * [docs/architecture.md](docs/architecture.md) — system design and agent contracts
 * [docs/manual-testing.md](docs/manual-testing.md) — browser test checklist
+* [scripts/verify_deployment.py](scripts/verify_deployment.py) — automated deployment smoke test

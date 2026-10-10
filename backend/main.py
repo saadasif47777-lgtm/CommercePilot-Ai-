@@ -420,11 +420,16 @@ def shopify_sync(limit: int = Query(10, ge=1, le=50)) -> dict:
 
 
 if __name__ == "__main__":
+    # Run from the repository root:  python -m backend.main
+    # Binds 0.0.0.0 so container/platform routers can reach it, and honours the
+    # platform-provided PORT (Render/Heroku-style) before any local override.
+    import os
+
     import uvicorn
 
     uvicorn.run(
         "backend.main:app",
-        host=config.env("BACKEND_HOST", "127.0.0.1"),
-        port=int(config.env("BACKEND_PORT", "8000")),
+        host=config.env("BACKEND_HOST", "0.0.0.0"),
+        port=int(os.environ.get("PORT") or config.env("BACKEND_PORT", "8000")),
         reload=False,
     )
