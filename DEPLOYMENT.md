@@ -30,7 +30,7 @@ design.
 | Backend run (local) | `python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000` |
 | Health endpoint | `GET /api/health` |
 | API docs | `GET /docs` |
-| Tests | `pytest tests/ -q` (111 tests), `npm run build` |
+| Tests | `pytest tests/ -q` (111 tests + frontend `npm run build` type-check), `npm run build` |
 | Deployment smoke test | `scripts/verify_deployment.py` |
 | Environment template | `.env.example` (names only, no values) |
 | Render blueprint | `render.yaml` (optional — same settings as §3) |

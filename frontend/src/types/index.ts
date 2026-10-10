@@ -203,6 +203,17 @@ export interface AnalysisResult {
     break_even_roas: number | null
     break_even_ad_spend_per_unit: number | null
   }
+  contribution_economics?: {
+    shipping_cost_per_unit: number | null
+    packaging_cost_per_unit: number | null
+    transaction_fee_per_unit: number | null
+    fixed_costs: number | null
+    currency: string
+    extra_unit_cost: number | null
+    contribution_per_unit: number | null
+    markup_pct: number | null
+    break_even_units: number | null
+  }
   budget_summary: {
     budget: number | null
     planned_spend: number | null

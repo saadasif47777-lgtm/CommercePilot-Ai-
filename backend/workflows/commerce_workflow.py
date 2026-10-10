@@ -84,6 +84,8 @@ def create_project(store: ProjectStore, payload: ProjectCreate) -> dict[str, Any
         "brief": brief.model_dump(),
         "research": None,
         "selected_product": None,
+        "saved_products": [],
+        "rejected_product_ids": [],
         "store_spec": None,
         "campaign": None,
         "analysis": None,
@@ -96,6 +98,15 @@ def create_project(store: ProjectStore, payload: ProjectCreate) -> dict[str, Any
     if payload.example:
         project["demo_labels"].append("Example project brief is fictional (illustrative demo).")
     return store.save(project)
+
+
+# --------------------------------------------------------------------------- #
+# Project migrations (legacy documents gain new fields on load)
+# --------------------------------------------------------------------------- #
+def _migrate(project: dict) -> dict:
+    project.setdefault("saved_products", [])
+    project.setdefault("rejected_product_ids", [])
+    return project
 
 
 # --------------------------------------------------------------------------- #
@@ -180,12 +191,36 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
         _finish(store, project, execution.id, "error", errors=[str(exc)])
         _save(store, project)
         raise StepFailed("research", f"Product Hunter failed: {exc}") from exc
+    # Respect the user's rejected products: keep the underlying research run
+    # intact (it holds the evidence) but exclude rejected rows from ranking,
+    # auto-selection and the UI list. Applies BEFORE persisting, so the saved
+    # document matches the ranked list the user sees.
+    original_count = len(result.products)
+    if project.get("rejected_product_ids"):
+        result.products = [p for p in result.products if p.id not in project["rejected_product_ids"]]
+        if original_count > len(result.products):
+            result.warnings = list(result.warnings or []) + [
+                f"{original_count - len(result.products)} rejected product(s) hidden from this run."
+            ]
     project["research"] = result.model_dump()
     if not result.products:
         _set_step(store, project, "research", "error", "No candidates found")
         _finish(store, project, execution.id, "error", errors=result.warnings or ["No products found."])
         _save(store, project)
         raise StepFailed("research", "No product candidates found. Try a different niche or mode.")
+    if not request.niche and not (project.get("brief") or {}).get("niche"):
+        result.warnings = list(result.warnings or []) + ["No niche in the brief - results may be generic."]
+    if not result.contains_live_results:
+        from .. import config as _cfg
+
+        if _cfg.SERPER_API_KEY:
+            pass  # had credentials but got nothing live: the provider warning is already attached
+        else:
+            result.warnings = list(result.warnings or []) + [
+                "Live search returned nothing this run; results below are the labelled sample "
+                "catalogue plus keyless DuckDuckGo when available. Real market data needs "
+                "SERPER_API_KEY."
+            ]
     _set_step(
         store, project, "research", "success",
         f"{len(result.products)} candidates ({'live+sample' if result.contains_live_results else 'sample'})",
@@ -206,11 +241,14 @@ def _resolve_product(project: dict, product_id: Optional[str], auto_select: bool
         for row in products:
             if row["id"] == product_id:
                 return Product(**row)
-        # Fallback: any catalogue product (research runs are limited to the top N)
+        # Fallbacks: saved/compared products, manual entries, then any catalogue product
+        for row in (project.get("saved_products") or []):
+            if row.get("id") == product_id:
+                return Product(**row)
         for row in product_hunter.load_sample_products():
             if row.id == product_id:
                 return row
-        raise StepFailed("select", f"Product '{product_id}' not found in research results or the sample catalogue.")
+        raise StepFailed("select", f"Product '{product_id}' not found in research results, saved products, or the sample catalogue.")
     if project.get("selected_product"):
         return Product(**project["selected_product"])
     if auto_select and products:
@@ -233,6 +271,100 @@ def step_select_product(store: ProjectStore, project: dict, product_id: Optional
     )
     _save(store, project)
     return product
+
+
+# --------------------------------------------------------------------------- #
+# Product curation: save / reject / manual entry
+# --------------------------------------------------------------------------- #
+def step_save_product(store: ProjectStore, project: dict, product_id: Optional[str] = None, product: Optional[Product] = None) -> dict:
+    """Save a product for later comparison. Works with research rows, the
+    sample catalogue, or a user-supplied manual product."""
+    execution = _start(store, project, "Product Curation", "save")
+    try:
+        if product is not None:
+            row = product.model_dump()
+            row.setdefault("is_sample_data", False)
+            if not row.get("score"):
+                row["ranking_reason"] = row.get("ranking_reason") or "Manually entered by the user (not machine-ranked)."
+                row["confidence"] = row.get("confidence") or "medium"
+        else:
+            row = _resolve_product(project, product_id, auto_select=True).model_dump()
+        saved = project.setdefault("saved_products", [])
+        for existing in saved:
+            if existing.get("id") == row["id"]:
+                existing.update(row)
+                _finish(store, project, execution, "success", "updated")
+                _set_step(store, project, "select", "pending", "Saved product updated - re-select to make it active")
+                return _save(store, project)
+        saved.append(row)
+        _finish(store, project, execution, "success", f"saved: {row['title'][:60]}")
+        return _save(store, project)
+    except (StepFailed, KeyError, ValueError) as exc:
+        _finish(store, project, execution, "error", str(exc))
+        raise
+
+
+def step_reject_product(store: ProjectStore, project: dict, product_id: str) -> dict:
+    """Reject a research candidate: it is excluded from future auto-selects."""
+    if not product_id:
+        raise StepFailed("select", "product_id required to reject")
+    rejected = project.setdefault("rejected_product_ids", [])
+    if product_id not in rejected:
+        rejected.append(product_id)
+    saved = project.get("saved_products") or []
+    kept = [p for p in saved if p.get("id") != product_id]
+    project["saved_products"] = kept
+    research = project.get("research") or {}
+    for row in research.get("products") or []:
+        if row.get("id") == product_id:
+            row["rejected"] = True
+    execution = _start(store, project, "Product Curation", f"reject {product_id[:12]}")
+    _finish(store, project, execution, "success", "rejected")
+    return _save(store, project)
+
+
+def step_manual_product(store: ProjectStore, project: dict, payload) -> dict:
+    """Create a product manually when live research is unavailable.
+
+    The record carries is_sample_data=False and evidence-only-from-user so
+    downstream agents do not pretend it was machine-researched.
+    """
+    execution = _start(store, project, "Product Hunter", "manual entry")
+    import re as _re
+
+    raw = payload.model_dump()
+    raw["id"] = _id("prd")
+    raw["description"] = raw.get("description") or raw.get("notes") or ""
+    raw["source"] = "sample"  # schema Literal; the label below tells the truth
+    raw["is_sample_data"] = False
+    raw["cost_is_estimate"] = True
+    raw["ranking_reason"] = "Manually entered by the user; economics come from user-supplied figures, not web research."
+    raw["confidence"] = "medium"
+    if raw.get("observed_cost"):
+        raw["estimated_cost"] = raw["observed_cost"]
+        if raw.get("observed_price"):
+            try:
+                from .tools.calculations import gross_margin_pct
+                raw["margin_pct"] = gross_margin_pct(raw["observed_price"], raw["observed_cost"])
+            except Exception:  # noqa: BLE001 - keep entry usable even if margin fails
+                raw["margin_pct"] = None
+    tags = [t for t in (raw.get("target_audience") or "").split(",") if t.strip()][:4]
+    raw["audience_tags"] = tags
+    # evidence: user supplied, clearly labelled
+    raw.setdefault("score_breakdown", [])
+    row = Product(**raw).model_dump()
+    saved = project.setdefault("saved_products", [])
+    saved.append(row)
+    research = project.get("research")
+    if not research:
+        project["research"] = {"products": [row], "warnings": ["Manual entry - no web research was performed for this run."], "mode": "manual", "generated_at": utcnow(), "sources": []}
+        research = project["research"]
+    else:
+        research.setdefault("products", []).append(row)
+    project["selected_product"] = row
+    _set_step(store, project, "select", "success", f"{row['title']} entered manually and selected")
+    _finish(store, project, execution, "success", f"manual product: {row['title'][:60]}")
+    return _save(store, project)
 
 
 def step_generate_store(

@@ -83,6 +83,20 @@ export const api = {
 
   selectProduct: (id: string, productId: string) =>
     post<Project>(`/api/projects/${id}/select-product`, { product_id: productId }),
+
+  manualProduct: (id: string, payload: Record<string, unknown>) =>
+    post<Project>(`/api/projects/${id}/products/manual`, payload),
+  savedProducts: (id: string) =>
+    request<{ count: number; rejected_count: number; products: Product[]; rejected_product_ids: string[] }>(
+      `/api/projects/${id}/products/saved`,
+    ),
+  saveProduct: (id: string, productId: string) =>
+    post<Project>(`/api/projects/${id}/products/${productId}/save`),
+  rejectProduct: (id: string, productId: string) =>
+    post<Project>(`/api/projects/${id}/products/${productId}/reject`),
+  manualCompare: (payload: Record<string, unknown>) =>
+    post<{ inputs: Record<string, unknown>; analysis: { unit_economics: Record<string, number | null>; contribution_economics: Record<string, unknown>; warnings: string[] }; disclaimer: string }>(
+      '/api/products/manual-compare', payload),
   resetProduct: (id: string) => post<Project>(`/api/projects/${id}/reset-product`),
 
   generateStore: (id: string, payload?: { design?: Partial<StoreDesign>; extra_instructions?: string }) =>

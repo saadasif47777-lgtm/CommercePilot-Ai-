@@ -19,7 +19,10 @@ __all__ = [
     "validate_money",
     "gross_profit_per_unit",
     "gross_margin_pct",
+    "markup_pct",
     "break_even_roas",
+    "break_even_units",
+    "contribution_margin_per_unit",
     "cost_per_acquisition",
     "conversion_rate",
     "ad_spend_summary",
@@ -86,6 +89,56 @@ def break_even_roas(selling_price: Any, gross_profit_per_unit_value: Any) -> Opt
     if profit <= 0:
         return None  # undefined: no amount of ROAS makes a loss-making unit break even
     return _r(price / profit)
+
+
+def markup_pct(selling_price: Any, product_cost: Any) -> float:
+    """(price - cost) / cost * 100. Zero cost is rejected (undefined)."""
+    price = validate_money(selling_price, "selling_price", allow_zero=False)
+    cost = validate_money(product_cost, "product_cost", allow_zero=False)
+    return _r((price - cost) / cost * 100.0)
+
+
+def contribution_margin_per_unit(
+    selling_price: Any,
+    product_cost: Any,
+    extra_unit_cost: Any = 0.0,
+) -> float:
+    """Gross profit per unit AFTER per-unit overheads.
+
+    extra_unit_cost = shipping + packaging + payment-transaction fees + any
+    other cost that scales 1:1 with units sold. These are the per-unit
+    variable costs the gross margin intentionally ignores; the contribution
+    margin includes them so break-even reflects the true unit economics.
+    """
+    price = validate_money(selling_price, "selling_price", allow_zero=False)
+    cost = validate_money(product_cost, "product_cost")
+    extra = validate_money(extra_unit_cost, "extra_unit_cost")
+    return _r(price - cost - extra)
+
+
+def break_even_units(
+    selling_price: Any,
+    product_cost: Any,
+    extra_unit_cost: Any,
+    fixed_costs: Any,
+) -> Optional[int]:
+    """Units that must sell so contribution covers fixed costs.
+
+    Contribution per unit = price - product_cost - shipping/packaging/
+    transaction fees. Returns None when contribution <= 0 (the unit never
+    recovers fixed costs; no amount of volume fixes a negative margin).
+    Fixed costs are monthly/one-off costs that do NOT scale with units.
+    """
+    price = validate_money(selling_price, "selling_price", allow_zero=False)
+    cost = validate_money(product_cost, "product_cost")
+    extra = validate_money(extra_unit_cost, "extra_unit_cost")
+    fixed = validate_money(fixed_costs, "fixed_costs")
+    contribution = price - cost - extra
+    if contribution <= 0:
+        return None
+    import math
+
+    return math.ceil(fixed / contribution)
 
 
 def cost_per_acquisition(ad_spend: Any, acquired_customers: Any) -> Optional[float]:

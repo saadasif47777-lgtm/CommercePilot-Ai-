@@ -44,6 +44,9 @@ class Product(BaseModel):
     source: Literal["sample", "live", "merged"] = "sample"
     source_url: Optional[str] = None
     observed_price: Optional[float] = Field(None, ge=0)
+    observed_cost: Optional[float] = Field(
+        None, ge=0, description="User-supplied unit cost (manual entry) - treated as user-provided data, not an estimate."
+    )
     currency: Optional[str] = None
     estimated_cost: Optional[float] = Field(
         None, ge=0, description="ESTIMATE only - never a verified supplier quote."
@@ -131,6 +134,39 @@ class BusinessBrief(BaseModel):
             and self.preferred_price_max < self.preferred_price_min
         ):
             raise ValueError("preferred_price_max must be >= preferred_price_min")
+        return self
+
+
+class ManualProductInput(BaseModel):
+    """Manual product entry for when external research is unavailable.
+
+    The record is saved with is_sample_data=False and evidence=[ indicating
+    'user supplied' so downstream agents treat it honestly as user-provided.
+    """
+    title: str = Field(..., min_length=2, max_length=160)
+    niche: Optional[str] = Field(None, max_length=200)
+    observed_price: Optional[float] = Field(None, ge=0)
+    observed_cost: Optional[float] = Field(None, ge=0)
+    currency: str = Field("PKR", max_length=8)
+    description: str = Field("", max_length=2000)
+    target_audience: Optional[str] = Field(None, max_length=400)
+    sourcing_difficulty: Literal["low", "medium", "high", "unknown"] = "unknown"
+    competition: Literal["low", "medium", "high", "unknown"] = "unknown"
+    source_url: Optional[str] = Field(None, max_length=512)
+    notes: str = Field("", max_length=1000)
+
+    @field_validator("currency")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v or len(v) > 8:
+            raise ValueError("currency must be a short code such as PKR or USD")
+        return v
+
+    @model_validator(mode="after")
+    def _some_price(self):
+        if self.observed_price is None and self.observed_cost is None:
+            raise ValueError("Provide at least observed_price or observed_cost so downstream agents have real economics to work with.")
         return self
 
 
@@ -357,6 +393,14 @@ class CampaignDraftUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Business Analyst
 # --------------------------------------------------------------------------- #
+class CostOverheadInputs(BaseModel):
+    """Per-unit and fixed costs the gross-margin view intentionally excludes."""
+    shipping_cost_per_unit: Optional[float] = Field(None, ge=0)
+    packaging_cost_per_unit: Optional[float] = Field(None, ge=0)
+    transaction_fee_per_unit: Optional[float] = Field(None, ge=0)
+    fixed_costs: Optional[float] = Field(None, ge=0, description="Non-unit costs (rent/tools/salaries) for break-even units")
+
+
 class ScenarioAssumptions(BaseModel):
     clicks: float = Field(1000, ge=0)
     conversion_rate_pct: float = Field(2.0, ge=0, le=100)
@@ -379,6 +423,7 @@ class AnalyzeRequest(BaseModel):
     best: Optional[ScenarioAssumptions] = None
     base: Optional[ScenarioAssumptions] = None
     conservative: Optional[ScenarioAssumptions] = None
+    overheads: Optional[CostOverheadInputs] = None
 
 
 # --------------------------------------------------------------------------- #

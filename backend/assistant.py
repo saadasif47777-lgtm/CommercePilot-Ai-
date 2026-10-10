@@ -35,6 +35,23 @@ INTENTS = [
 ]
 
 
+CHAIN_PATTERN = (
+    r"\b(and|then)\b.*\b(store|campaign|break[- ]?even|analy[sz]\w*|profit\w*)\b"
+    "|\bcompare\b.*\b(economics|products?)\b"
+)
+
+
+def _split_chain(message: str) -> list[str]:
+    """Split a multi-stage request into sequential sub-requests.
+
+    'Find products, create a store for the selected one, prepare a campaign
+    within my budget, and show me the break-even point' becomes four intents
+    executed in order over the same project. Fallback: sentence split.
+    """
+    parts = re.split(r",\s+|;\s+| and then | then |\band\s+(?=(?:create|prepare|show|compare|find|build|make|run|generate)\b)", message.lower())
+    return [p.strip(" ,") for p in parts if p and p.strip(" ,")]
+
+
 def _detect_intent(message: str) -> str:
     lowered = message.lower()
     if llm.llm_available():
@@ -59,6 +76,9 @@ def _detect_intent(message: str) -> str:
 
 def handle(store: ProjectStore, project_id: Optional[str], message: str) -> dict[str, Any]:
     project = store.get(project_id) if project_id else None
+    lowered = message.lower()
+    if re.search(CHAIN_PATTERN, lowered) and len(_split_chain(message)) > 1:
+        return _handle_chain(store, project_id, _split_chain(message))
     intent = _detect_intent(message)
 
     if intent == "unknown":
@@ -171,8 +191,35 @@ def handle(store: ProjectStore, project_id: Optional[str], message: str) -> dict
             report = wf.step_report(store, project)
             return {"intent": intent, "reply": "Report rebuilt with the latest data.", "report": report}
     except wf.StepFailed as exc:
-        return {"intent": intent, "reply": f"{exc.step} step failed: {exc.message}"}
-    except calc.CalculationError as exc:
-        return {"intent": intent, "reply": f"Calculation rejected an input: {exc}"}
+        return {"intent": intent, "reply": f"{exc.step} step failed: {exc.message}", "failed_step": exc.step, "can_retry": True}
 
-    return {"intent": intent, "reply": "Action recognised but not completed."}
+
+def _handle_chain(store: ProjectStore, project_id: Optional[str], parts: list[str]) -> dict[str, Any]:
+    """Execute a multi-stage request stage by stage over shared project state.
+
+    Stops at the first stage needing a human decision (product approval) or
+    the first hard failure, and reports exactly which stages completed.
+    """
+    if not project_id:
+        return {"intent": "chain", "reply": "Open a project first, then describe the full sequence again."}
+    completed: list[str] = []
+    replies: list[str] = []
+    for part in parts:
+        result = handle(store, project_id, part)
+        intent_used = result.get("intent", "unknown")
+        if intent_used in ("store", "campaign", "analyze", "report", "research", "select", "workflow") or intent_used.startswith("store"):
+            if result.get("reply", "").startswith(("I could not", "Open or create")):
+                replies.append(f"Stage '{part.strip()}' needs context: {result['reply']}")
+                break
+            completed.append(intent_used)
+            replies.append(result.get("reply", ""))
+        if "failed" in result.get("reply", "").lower() or result.get("failed_step"):
+            replies.append(f"Stopping the chain here: {result.get('reply')}")
+            break
+        if intent_used == "select" and "Selected" not in result.get("reply", ""):
+            # store/campaign generation needs an approved product; stop for approval
+            replies.append("Pick a product (say 'select #1' or open the Product Hunter) and I will continue: build the storefront, draft the campaign, then compute break-even.")
+            break
+    if len(completed) == len(parts):
+        return {"intent": "chain", "reply": "Done: " + " ".join(replies), "completed": completed}
+    return {"intent": "chain", "reply": " | ".join(replies), "completed": completed}

@@ -18,6 +18,7 @@ from ..schemas import (
     AnalyzeRequest,
     BusinessBrief,
     CampaignPlan,
+    CostOverheadInputs,
     Product,
     ScenarioAssumptions,
     utcnow,
@@ -52,7 +53,9 @@ def analyze(
 
     # ---- 1. Unit economics ------------------------------------------------ #
     price = product.observed_price
-    cost = product.estimated_cost
+    # Manual/user-entered products store their cost in observed_cost; researched
+    # products carry an explicitly-labelled estimate in estimated_cost.
+    cost = getattr(product, "observed_cost", None) or product.estimated_cost
     unit: dict = {
         "selling_price": price,
         "product_cost": cost,
@@ -90,6 +93,39 @@ def analyze(
                 )
         except calc.CalculationError as exc:
             errors.append(f"Invalid product economics: {exc}")
+
+    # ---- 1b. Contribution economics (with per-unit overheads) ------------- #
+    overheads: CostOverheadInputs = request.overheads or CostOverheadInputs()
+    extra_per_unit = sum(
+        v or 0.0
+        for v in (
+            overheads.shipping_cost_per_unit,
+            overheads.packaging_cost_per_unit,
+            overheads.transaction_fee_per_unit,
+        )
+    )
+    contribution: dict = {**overheads.model_dump(), "currency": currency,
+                          "extra_unit_cost": round(extra_per_unit, 2) if extra_per_unit else None,
+                          "contribution_per_unit": None, "markup_pct": None,
+                          "break_even_units": None}
+    if price and cost:
+        try:
+            contribution["markup_pct"] = calc.markup_pct(price, cost)
+            if extra_per_unit:
+                contribution["contribution_per_unit"] = calc.contribution_margin_per_unit(
+                    price, cost, extra_per_unit
+                )
+                if overheads.fixed_costs:
+                    contribution["break_even_units"] = calc.break_even_units(
+                        price, cost, extra_per_unit, overheads.fixed_costs
+                    )
+                if contribution["contribution_per_unit"] is not None and contribution["contribution_per_unit"] <= 0:
+                    warnings.append(
+                        "With the entered shipping/packaging/transaction costs the unit "
+                        "contribution is negative - no volume makes this profitable."
+                    )
+        except calc.CalculationError as exc:
+            errors.append(f"Invalid overhead input: {exc}")
 
     # The campaign budget is what is actually being spent against (it can differ
     # from the brief budget after the user edits the plan); fall back to the brief.
@@ -217,6 +253,7 @@ def analyze(
         "currency": currency,
         "product": {"id": product.id, "title": product.title, "is_sample_data": product.is_sample_data},
         "unit_economics": unit,
+        "contribution_economics": contribution,
         "budget_summary": budget_summary,
         "kpis": kpis,
         "scenarios": scenarios,
@@ -232,6 +269,9 @@ def analyze(
                 "Break-even ROAS uses GROSS profit only. It excludes shipping, payment gateways, "
                 "returns, taxes and overheads unless you model them into the product cost."
             ),
+            "markup_pct": "markup % = (selling price - product cost) / product cost x 100 (undefined when cost is 0)",
+            "contribution_per_unit": "contribution per unit = price - product cost - (shipping + packaging + transaction fees)",
+            "break_even_units": "fixed costs / contribution per unit, rounded UP to whole units (None when contribution <= 0)",
             "cpa": "advertising spend / acquired customers",
             "conversion_rate": "conversions / clicks x 100",
         },

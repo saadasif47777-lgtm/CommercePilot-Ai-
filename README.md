@@ -17,8 +17,8 @@ backend, React + TypeScript + Tailwind frontend, SQLite persistence.
 | **Product Hunter** | Live web search (DuckDuckGo via `ddgs`, Serper if keyed) + a 16-product sample catalogue, merged and de-duplicated, scored by a transparent weighted heuristic | Live results keep source URLs; cost/demand/competition stay **unknown** when not evidenced. Sample rows are labelled *sample data* everywhere |
 | **Store Architect** | Parses the brief into a Pydantic-validated website specification and renders a genuinely interactive storefront (catalog search/filter, quantity steppers, add-to-cart, cart drawer with subtotal, mobile nav, FAQ accordion). Natural-language edits update the structured spec; export as standalone HTML | Generated from validated reusable components — **no arbitrary AI code is executed**. Reviews are labelled sample |
 | **Marketing Strategist** | Campaign plan (objective, 3 creative concepts, audience hypotheses, testing strategy, KPIs, risks) + budget allocator validated to sum exactly to the budget (PKR 30,000 → 7,500 testing / 19,500 scaling / 3,000 reserve) | Meta Marketing API is **Not Connected**. Simulated execution is labelled **DEMO — NOT PUBLISHED** and computes deterministic projections from stated assumptions (never random) |
-| **Business Analyst** | Real Python arithmetic: gross profit/unit, margin %, break-even ROAS, CPA, conversion rate, budget utilisation, three editable scenarios | KPIs without data report **"no data"** rather than estimates. Break-even ROAS is explicitly documented as gross-profit-only |
-| **Orchestrator** | 8-step workflow with per-step status, retry, and an execution log (agent, status, timestamps, in/out summaries, warnings) | Runs plain typed Python functions — see *Why not Agno* below |
+| **Business Analyst** | Real Python arithmetic: gross profit/unit, margin %, markup %, break-even ROAS, **contribution margin with per-unit overheads** (shipping, packaging, payment fees) and **break-even units** against fixed costs, CPA, conversion rate, budget utilisation, three editable scenarios | KPIs without data report **"no data"** rather than estimates. Break-even ROAS is explicitly documented as gross-profit-only |
+| **Orchestrator + Assistant** | 8-step workflow with per-step status, retry, execution log; the assistant **chains multi-stage requests** ("find products, build the store, plan the campaign, show break-even") and stops at approval gates | Runs plain typed Python functions — see *Why not Agno* below |
 | **Integrations panel** | Live status for LLM, web search, Meta, Shopify, storage with setup instructions; credentials save server-side only (git-ignored) and are never echoed to the browser | Meta/Shopify default to **not connected**; verification calls the real vendor APIs when configured |
 
 **Fallback mode:** no AI API key is configured, so all copy is template/rule
@@ -107,6 +107,17 @@ docs/                    architecture.md, manual-testing.md
 render.yaml              Render backend blueprint (optional, mirrors dashboard)
 frontend/vercel.json     Vercel SPA rewrite
 ```
+
+## Manual product entry & product curation
+
+No search credentials or a niche outside the catalogue? **Enter a product
+manually** on the Product Hunter page: name, price, unit cost, description.
+Manual records are labelled *manually entered* and their economics are treated
+as user-provided data everywhere — the analyst, storefront and campaign work
+from them exactly as from researched products. `GET /api/products/manual-compare`
+previews the economics before anything is saved. Every research row can also be
+**saved to compare** or **rejected**; rejected products are excluded from later
+runs and auto-selection.
 
 ## Honesty policy
 

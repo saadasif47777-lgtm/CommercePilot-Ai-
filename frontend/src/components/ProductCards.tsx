@@ -80,11 +80,15 @@ export function ProductCard({
   currency = 'PKR',
   selected = false,
   onSelect,
+  onSave,
+  onReject,
 }: {
   product: Product
   currency?: string
   selected?: boolean
   onSelect?: () => void
+  onSave?: (id: string) => void
+  onReject?: (id: string) => void
 }) {
   const [showDetail, setShowDetail] = useState(false)
   return (
@@ -133,6 +137,16 @@ export function ProductCard({
         {onSelect && (
           <Button size="sm" variant={selected ? 'accent' : 'primary'} onClick={onSelect}>
             {selected ? 'Selected ✓' : 'Add to Project'}
+          </Button>
+        )}
+        {onSave && (
+          <Button size="sm" variant="ghost" onClick={() => onSave(product.id)}>
+            Save to compare
+          </Button>
+        )}
+        {onReject && (
+          <Button size="sm" variant="ghost" onClick={() => onReject(product.id)}>
+            Reject
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={() => setShowDetail((s) => !s)}>

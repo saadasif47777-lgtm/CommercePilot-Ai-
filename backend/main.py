@@ -22,7 +22,9 @@ from .schemas import (
     CampaignDraftUpdate,
     CampaignPlan,
     CampaignRequest,
+    ManualProductInput,
     MetaCredentials,
+    Product,
     ProjectCreate,
     ResearchRequest,
     ResearchResult,
@@ -196,6 +198,66 @@ def reset_product(project_id: str) -> dict:
     for step_id in ("select", "store", "campaign", "analyze", "report"):
         wf._set_step(store, project, step_id, "pending", "Product reset")
     return wf._save(store, project)
+
+
+# --------------------------------------------------------------------------- #
+# Product curation: manual entry / save / reject
+# --------------------------------------------------------------------------- #
+@app.post("/api/projects/{project_id}/products/manual")
+def add_manual_product(project_id: str, payload: ManualProductInput) -> dict:
+    """Manually enter a product when live research is unavailable.
+
+    The record is clearly labelled 'manually entered' everywhere; downstream
+    agents treat its economics as user-provided data, never as web-verified.
+    """
+    project = _project_or_404(project_id)
+    result = wf.step_manual_product(store, project, payload)
+    return {**result, "manual_entry": True}
+
+
+@app.get("/api/projects/{project_id}/products/saved")
+def list_saved_products(project_id: str) -> dict:
+    project = _project_or_404(project_id)
+    saved = project.get("saved_products") or []
+    rejected = project.get("rejected_product_ids") or []
+    return {
+        "count": len(saved),
+        "rejected_count": len(rejected),
+        "products": saved,
+        "rejected_product_ids": rejected,
+    }
+
+
+@app.post("/api/projects/{project_id}/products/{product_id}/save")
+def save_product(project_id: str, product_id: str) -> dict:
+    project = _project_or_404(project_id)
+    try:
+        return wf.step_save_product(store, project, product_id=product_id)
+    except wf.StepFailed as exc:
+        raise HTTPException(status_code=422, detail={"step": exc.step, "message": exc.message}) from exc
+
+
+@app.post("/api/projects/{project_id}/products/{product_id}/reject")
+def reject_product(project_id: str, product_id: str) -> dict:
+    project = _project_or_404(project_id)
+    return wf.step_reject_product(store, project, product_id)
+
+
+@app.post("/api/products/manual-compare")
+def manual_compare(payload: ManualProductInput) -> dict:
+    """Score a manually entered product WITHOUT saving it: an economics preview."""
+    from .agents import business_analyst as analyst
+
+    import uuid as _uuid
+
+    data = payload.model_dump()
+    preview = Product(id=f"preview-{_uuid.uuid4().hex[:8]}", source="sample", **data)
+    result = analyst.analyze(BusinessBrief(currency=data["currency"]), preview)
+    return {
+        "inputs": payload.model_dump(),
+        "analysis": {"unit_economics": result["unit_economics"], "contribution_economics": result["contribution_economics"], "warnings": result["warnings"]},
+        "disclaimer": "Preview only - this compares your supplied numbers; nothing is saved.",
+    }
 
 
 # --------------------------------------------------------------------------- #

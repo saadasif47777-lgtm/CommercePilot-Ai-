@@ -73,6 +73,58 @@ export function ProductHunterPage() {
       await refreshProject()
     })
 
+  const saveCmp = (id: string) =>
+    run('save-product', async () => {
+      if (!project) return
+      await api.saveProduct(project.id, id)
+      await refreshProject()
+    })
+
+  const reject = (id: string) =>
+    run('reject-product', async () => {
+      if (!project) return
+      await api.rejectProduct(project.id, id)
+      await refreshProject()
+    })
+
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manual, setManual] = useState({ title: '', observed_price: '', observed_cost: '', description: '', target_audience: '' })
+  const [manualPreview, setManualPreview] = useState<{ unit_economics: Record<string, number | null>; contribution_economics: Record<string, unknown> } | null>(null)
+
+  const previewManual = () =>
+    run('manual-compare', async () => {
+      if (manual.title.trim().length < 2) { setLocalError('Product title is too short.'); return }
+      const body: Record<string, unknown> = {
+        title: manual.title.trim(),
+        currency: brief?.currency ?? 'PKR',
+        description: manual.description,
+      }
+      if (manual.observed_price) body.observed_price = Number(manual.observed_price)
+      if (manual.observed_cost) body.observed_cost = Number(manual.observed_cost)
+      if (manual.target_audience) body.target_audience = manual.target_audience
+      const res = await api.manualCompare(body)
+      setManualPreview({ unit_economics: res.analysis.unit_economics, contribution_economics: res.analysis.contribution_economics })
+    })
+
+  const saveManual = () =>
+    run('manual-product', async () => {
+      if (!project) return
+      if (manual.title.trim().length < 2) { setLocalError('Product title is too short.'); return }
+      const body: Record<string, unknown> = {
+        title: manual.title.trim(),
+        currency: brief?.currency ?? 'PKR',
+        description: manual.description,
+      }
+      if (manual.observed_price) body.observed_price = Number(manual.observed_price)
+      if (manual.observed_cost) body.observed_cost = Number(manual.observed_cost)
+      if (manual.target_audience) body.target_audience = manual.target_audience
+      await api.manualProduct(project.id, body)
+      setManualOpen(false)
+      setManualPreview(null)
+      setManual({ title: '', observed_price: '', observed_cost: '', description: '', target_audience: '' })
+      await refreshProject()
+    })
+
   const searchLive = useMemo(() => filtered.filter((p) => p.source !== 'sample'), [filtered])
   const searchSample = useMemo(() => filtered.filter((p) => p.source === 'sample'), [filtered])
 
@@ -118,7 +170,38 @@ export function ProductHunterPage() {
           <Button busy={busy === 'research'} onClick={search}>
             {research ? 'Re-run research' : 'Run Product Hunter'}
           </Button>
+          <Button variant="secondary" onClick={() => setManualOpen((o) => !o)}>
+            {manualOpen ? 'Close' : 'Enter product manually'}
+          </Button>
         </div>
+        {manualOpen && (
+          <div className="mt-4 rounded-xl border border-line bg-mist p-4">
+            <p className="mb-3 text-xs text-muted">
+              When web research is unavailable: enter the product and its economics yourself.
+              Records are labelled <span className="font-semibold">manually entered</span> — nothing pretends to be
+              machine-researched. Numbers you type drive Beta and Gamma working from the same data.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <Field label="Product name"><Input value={manual.title} onChange={(e) => setManual({ ...manual, title: e.target.value })} placeholder="e.g. Herbal hair oil 100ml" /></Field>
+              <Field label="Selling price"><Input type="number" min={0} value={manual.observed_price} onChange={(e) => setManual({ ...manual, observed_price: e.target.value })} placeholder="2500" /></Field>
+              <Field label="Unit cost"><Input type="number" min={0} value={manual.observed_cost} onChange={(e) => setManual({ ...manual, observed_cost: e.target.value })} placeholder="1200" /></Field>
+              <div className="md:col-span-2"><Field label="Description (optional)"><Input value={manual.description} onChange={(e) => setManual({ ...manual, description: e.target.value })} placeholder="what it is, key benefit" /></Field></div>
+            </div>
+            {manualPreview && (
+              <p className="mt-3 text-xs text-muted">
+                Economics preview: gross profit/unit = {manualPreview.unit_economics.gross_profit_per_unit ?? 'no data'} ·
+                margin {' '}
+                {manualPreview.unit_economics.gross_margin_pct ?? 'no data'}% · break-even ROAS =
+                {' '}{manualPreview.unit_economics.break_even_roas ?? 'undefined'}. Nothing is saved until
+                you confirm.
+              </p>
+            )}
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" variant="secondary" busy={busy === 'manual-compare'} onClick={previewManual}>Check economics first</Button>
+              <Button size="sm" busy={busy === 'manual-product'} onClick={saveManual}>Save & select this product</Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {busy === 'research' && <SkeletonCards count={3} />}
@@ -173,7 +256,7 @@ export function ProductHunterPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {filtered.map((p) => (
-                  <ProductCard key={p.id} product={p} currency={brief?.currency ?? 'PKR'} selected={project?.selected_product?.id === p.id} onSelect={() => select(p.id)} />
+                  <ProductCard key={p.id} product={p} currency={brief?.currency ?? 'PKR'} selected={project?.selected_product?.id === p.id} onSelect={() => select(p.id)} onSave={saveCmp} onReject={reject} />
                 ))}
               </div>
             )

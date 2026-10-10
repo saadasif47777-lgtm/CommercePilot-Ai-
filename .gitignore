@@ -35,3 +35,4 @@ frontend/tsconfig.tsbuildinfo
 frontend_dev.log
 backend_server.log
 *.pid
+*.tar.gz

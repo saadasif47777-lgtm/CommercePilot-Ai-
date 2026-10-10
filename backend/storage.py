@@ -76,13 +76,22 @@ class ProjectStore:
         row = self._conn().execute(
             "SELECT data FROM projects WHERE id = ?", (project_id,)
         ).fetchone()
-        return json.loads(row["data"]) if row else None
+        return self._migrate(json.loads(row["data"])) if row else None
+
+    # Legacy-document migration lives here so EVERY load (routes, workflow,
+    # assistant) sees versioned fields without each caller remembering them.
+    def _migrate(self, project: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if project is None:
+            return None
+        project.setdefault("saved_products", [])
+        project.setdefault("rejected_product_ids", [])
+        return project
 
     def list(self) -> list[dict[str, Any]]:
         rows = self._conn().execute(
             "SELECT data FROM projects ORDER BY updated_at DESC"
         ).fetchall()
-        return [json.loads(r["data"]) for r in rows]
+        return [self._migrate(json.loads(r["data"])) for r in rows]
 
     def delete(self, project_id: str) -> bool:
         conn = self._conn()

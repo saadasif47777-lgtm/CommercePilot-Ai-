@@ -34,13 +34,26 @@ export function AnalyticsPage() {
   const setAssumption = (scenario: string, field: 'clicks' | 'conversion_rate_pct' | 'cpc', value: number) =>
     setAssumptions((a) => ({ ...a, [scenario]: { ...a[scenario], [field]: value } }))
 
+  const [overheads, setOverheads] = useState<Record<string, string>>({ shipping: '', packaging: '', transaction: '', fixed: '' })
+
   const analyze = () =>
     run('analyze', async () => {
       if (!project) return
-      const payload = Object.fromEntries(
+      const payload: Record<string, unknown> = {}
+      const actualsPayload = Object.fromEntries(
         Object.entries(actuals).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)]),
       )
-      await api.analyze(project.id, Object.keys(payload).length ? { actuals: payload } : {})
+      if (Object.keys(actualsPayload).length) payload.actuals = actualsPayload
+      const ohValues = [overheads.shipping, overheads.packaging, overheads.transaction, overheads.fixed]
+      if (ohValues.some((v) => v !== '')) {
+        payload.overheads = {
+          ...(overheads.shipping !== '' ? { shipping_cost_per_unit: Number(overheads.shipping) } : {}),
+          ...(overheads.packaging !== '' ? { packaging_cost_per_unit: Number(overheads.packaging) } : {}),
+          ...(overheads.transaction !== '' ? { transaction_fee_per_unit: Number(overheads.transaction) } : {}),
+          ...(overheads.fixed !== '' ? { fixed_costs: Number(overheads.fixed) } : {}),
+        }
+      }
+      await api.analyze(project.id, payload)
       await refreshProject()
     })
 
@@ -97,6 +110,43 @@ export function AnalyticsPage() {
               tone={analysis.kpis.cpa != null ? 'good' : 'neutral'}
             />
           </div>
+
+          {(() => {
+            const contrib = analysis?.contribution_economics as Record<string, unknown> | undefined
+            if (!contrib) return null
+            const cu = contrib.contribution_per_unit as number | null | undefined
+            const beu = contrib.break_even_units as number | null | undefined
+            const mu = contrib.markup_pct as number | null | undefined
+            return (
+              <Card>
+                <SectionTitle
+                  title="Contribution economics (includes overheads)"
+                  subtitle="Adds shipping, packaging and payment fees to the picture; break-even units cover those costs plus fixed ones."
+                />
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Stat label="Markup %" value={mu != null ? `${mu}%` : 'no data'} sub="markup = profit / cost (vs margin = profit / price)" tone={mu ? 'good' : 'neutral'} />
+                  <Stat
+                    label="Contribution / unit"
+                    value={cu != null ? `${currency} ${cu.toLocaleString()}` : 'enter overheads'}
+                    sub={cu != null && cu <= 0 ? 'negative: no volume makes this profitable' : 'after shipping + packaging + fees'}
+                    tone={cu != null ? (cu > 0 ? 'good' : 'bad') : 'neutral'}
+                  />
+                  <Stat
+                    label="Break-even units"
+                    value={beu != null ? `${beu} units` : cu != null && cu <= 0 ? 'never' : 'enter fixed costs'}
+                    sub={beu != null ? 'fixed costs ÷ contribution per unit' : 'needs fixed costs + overheads'}
+                    tone={beu != null ? 'neutral' : 'neutral'}
+                  />
+                  <Stat
+                    label="Per-unit overheads"
+                    value={contrib.extra_unit_cost != null ? `${currency} ${Number(contrib.extra_unit_cost).toLocaleString()}` : 'not modelled'}
+                    sub="shipping + packaging + transaction fees"
+                    tone="neutral"
+                  />
+                </div>
+              </Card>
+            )
+          })()}
 
           {analysis.warnings.length > 0 && <WarningList items={analysis.warnings} title="What these numbers do and don't say" />}
 
