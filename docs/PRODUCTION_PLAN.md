@@ -142,6 +142,46 @@ project (Groq free tier). Until then the app truthfully reports fallback mode.
 short (≤800 tokens); the 60 s function limit is set, and streaming will be added
 together with the first long-generation feature rather than speculatively.
 
+## 11. Cost policy (owner constraint)
+
+**Paid spend is limited to LLM tokens and, only if ever needed, Vercel Pro.
+Everything else must stay inside a free tier.** No credit card is added to any
+service unless the owner approves it first.
+
+| Service | Free allowance (checked Oct 2026) | At the limit | Card? |
+|---|---|---|---|
+| Neon Postgres | 100 CU-hours/project/mo, 1 GB storage/project (20 GB/account), 100 projects, 10 branches | Writes stop at the storage cap; compute already scales to zero after 5 min idle | No |
+| Clerk | 50,000 monthly retained users per app; email codes/links + up to 3 social connections (Google) | One-month grace, then upgrade required | No |
+| Upstash Redis | 500,000 commands/mo, 250 MB data, 10 GB bandwidth | Notifications; card upgrades the DB (does not preserve free allowances) | No |
+| Sentry | 5,000 errors/mo, 1 user, 30-day lookback | Extra events rejected (429) | No (per pricing page) |
+| GitHub Actions (private repo) | 2,000 minutes/mo, 500 MB artifacts | Usage blocked without a payment method | No |
+| Vercel Hobby (current) | 100 GB transfer, 1M requests, 100 deployments/day | Affected feature pauses until reset | No |
+| Vercel Pro (allowed, not needed yet) | $20/mo seat; 60 s → 800 s functions, 1 TB transfer | Billed beyond the $20 credit | Yes |
+
+Sources: Neon docs (plans + 2026-10-02 storage changelog), Clerk pricing, Upstash
+pricing/billing, Sentry pricing + quota docs, GitHub Actions billing, Vercel
+plan docs.
+
+### Model routing
+
+- `LLM_MODEL` (default `openai/gpt-oss-20b`) handles **every** task: intent
+  classification, short rewrites, classification and any future helper calls.
+- `LLM_MODEL_STRONG` (empty by default) is used **only** for storefront and ad
+  copy generation (`quality=ai.QUALITY_STRONG`). Set it only if the cheap model's
+  copy is not good enough; leaving it blank keeps the cheapest configuration.
+- No other model is ever called. Every call records its model in `ai_usage`, so
+  the split between cheap and strong spend is auditable.
+
+### Spend guards and warnings
+
+- Hard cap: `AI_MONTHLY_CAP_USD` (default 25) blocks calls at 100% and callers
+  degrade to clearly-labelled templates.
+- Warning: at `AI_BUDGET_WARN_PCT` (default 80%) the server logs a warning line
+  and `ai.usage_summary()` reports `warn: true`, `percent_used` and
+  `remaining_usd`.
+- Other services are monitored through their own dashboards; the owner-facing
+  in-app usage/cost dashboard is scheduled for Phase 7.
+
 ## 10. Definition of done (mapping)
 
 A stranger signs up → verifies email → uses every feature with real model output

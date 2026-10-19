@@ -17,6 +17,8 @@ Design rules enforced here (see docs/PRODUCTION_PLAN.md, Phase 1):
 from __future__ import annotations
 
 from .client import (  # noqa: F401
+    QUALITY_FAST,
+    QUALITY_STRONG,
     AIBudgetExceeded,
     AIConfigError,
     AIError,
@@ -26,6 +28,7 @@ from .client import (  # noqa: F401
     complete_json,
     complete_text,
     mode,
+    model_for,
     usage_summary,
 )
 from .guard import sanitize_text, wrap_untrusted  # noqa: F401

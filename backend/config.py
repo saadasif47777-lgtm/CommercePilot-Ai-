@@ -56,11 +56,16 @@ LLM_PROVIDER = env("LLM_PROVIDER", "groq")
 LLM_API_KEY = env("LLM_API_KEY") or env("OPENAI_API_KEY")
 LLM_BASE_URL = env("LLM_BASE_URL") or env("OPENAI_BASE_URL")
 LLM_MODEL = env("LLM_MODEL", env("OPENAI_MODEL", "openai/gpt-oss-20b"))
+# Stronger model, used ONLY for tasks where copy quality matters (storefront and
+# ad copy). Empty means "use the cheap model for everything".
+LLM_MODEL_STRONG = env("LLM_MODEL_STRONG", "")
 LLM_TIMEOUT = float(env("LLM_TIMEOUT", "20"))
 LLM_MAX_RETRIES = int(env("LLM_MAX_RETRIES", "2"))
 LLM_MAX_OUTPUT_TOKENS = int(env("LLM_MAX_OUTPUT_TOKENS", "800"))
 # Hard monthly spend cap (USD, estimated from token usage). 0 disables the cap.
 AI_MONTHLY_CAP_USD = float(env("AI_MONTHLY_CAP_USD", "25"))
+# Warn (log + usage summary flag) once this percentage of the cap is used.
+AI_BUDGET_WARN_PCT = float(env("AI_BUDGET_WARN_PCT", "80"))
 
 # Legacy aliases kept so existing references keep working.
 OPENAI_API_KEY = LLM_API_KEY

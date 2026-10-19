@@ -147,3 +147,56 @@ def test_missing_key_returns_none(ai, monkeypatch):
     monkeypatch.setattr(ai_client, "_post", lambda *a, **k: _ok())
     assert ai_client.available() is False
     assert _call() is None
+
+
+def test_cost_routing_uses_strong_model_only_when_requested(ai, monkeypatch):
+    payloads: list[dict] = []
+
+    def fake_post(url, headers, payload, timeout):
+        payloads.append(payload)
+        return _ok()
+
+    monkeypatch.setattr(ai_client, "_post", fake_post)
+    monkeypatch.setattr(config, "LLM_MODEL", "cheap-model")
+    monkeypatch.setattr(config, "LLM_MODEL_STRONG", "strong-model")
+
+    ai_client.complete_json(prompt_name="intent", schema=AssistantIntent, user="x")
+    ai_client.complete_json(
+        prompt_name="intent",
+        schema=AssistantIntent,
+        user="x",
+        quality=ai_client.QUALITY_STRONG,
+    )
+    assert payloads[0]["model"] == "cheap-model"
+    assert payloads[1]["model"] == "strong-model"
+
+
+def test_strong_quality_falls_back_to_cheap_model_when_unset(ai, monkeypatch):
+    payloads: list[dict] = []
+
+    def fake_post(url, headers, payload, timeout):
+        payloads.append(payload)
+        return _ok()
+
+    monkeypatch.setattr(ai_client, "_post", fake_post)
+    monkeypatch.setattr(config, "LLM_MODEL", "cheap-model")
+    monkeypatch.setattr(config, "LLM_MODEL_STRONG", "")
+    ai_client.complete_json(
+        prompt_name="intent",
+        schema=AssistantIntent,
+        user="x",
+        quality=ai_client.QUALITY_STRONG,
+    )
+    assert payloads[0]["model"] == "cheap-model"
+
+
+def test_usage_summary_warns_near_budget(ai, monkeypatch):
+    monkeypatch.setattr(config, "AI_MONTHLY_CAP_USD", 10.0)
+    monkeypatch.setattr(config, "AI_BUDGET_WARN_PCT", 80.0)
+    ai_client._log().record(
+        provider="groq", model="m", prompt="p", est_cost_usd=8.5, status="ok"
+    )
+    summary = ai_client.usage_summary()
+    assert summary["warn"] is True
+    assert summary["percent_used"] == 85.0
+    assert summary["remaining_usd"] == 1.5

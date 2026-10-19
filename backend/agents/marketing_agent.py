@@ -96,6 +96,7 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
         llm_creatives = ai.complete_json(
             prompt_name="campaign_creatives",
             schema=CampaignCreatives,
+            quality=ai.QUALITY_STRONG,
             user=_llm_prompt(brief, product, request),
         )
     except ai.AIError:

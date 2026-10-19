@@ -182,6 +182,7 @@ def _generate_copy(brief: BusinessBrief, product: Product, brand: str, personali
         result = ai.complete_json(
             prompt_name="store_copy",
             schema=StoreCopy,
+            quality=ai.QUALITY_STRONG,
             user=(
                 f"Brand: {ai.wrap_untrusted('brand', brand)}\n"
                 f"Industry: {ai.wrap_untrusted('industry', brief.industry)}\n"

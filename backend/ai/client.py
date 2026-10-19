@@ -12,6 +12,7 @@ Responsibilities (all server-side):
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 import time
@@ -62,6 +63,14 @@ PRICES: dict[str, tuple[float, float]] = {
     "default": (0.20, 0.90),
 }
 
+# Cost policy (docs/PRODUCTION_PLAN.md §11): cheap model for classification and
+# short tasks, stronger model only for user-facing copy generation.
+QUALITY_FAST = "fast"
+QUALITY_STRONG = "quality"
+
+logger = logging.getLogger("commercepilot.ai")
+_budget_warned = False
+
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 RETRY_BASE_DELAY = 0.4
 RETRY_MAX_DELAY = 4.0
@@ -99,16 +108,33 @@ def _base_url() -> str:
     return DEFAULT_BASE_URLS.get(_provider(), DEFAULT_BASE_URLS["groq"])
 
 
-def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
-    pin, pout = PRICES.get(config.LLM_MODEL, PRICES["default"])
+def model_for(quality: str = QUALITY_FAST) -> str:
+    """Model to use for a task: strong only when explicitly requested."""
+    if quality == QUALITY_STRONG and config.LLM_MODEL_STRONG:
+        return config.LLM_MODEL_STRONG
+    return config.LLM_MODEL
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
+    pin, pout = PRICES.get(model, PRICES["default"])
     return round(input_tokens / 1_000_000 * pin + output_tokens / 1_000_000 * pout, 8)
 
 
 def _budget_check() -> None:
+    global _budget_warned
     cap = config.AI_MONTHLY_CAP_USD
     if cap <= 0:
         return
     spent = _log().month_cost()
+    pct = spent / cap * 100
+    if not _budget_warned and pct >= config.AI_BUDGET_WARN_PCT:
+        _budget_warned = True
+        logger.warning(
+            "AI budget %.0f%% used (estimated $%.2f of $%.2f this month)",
+            pct,
+            spent,
+            cap,
+        )
     if spent >= cap:
         raise AIBudgetExceeded(
             f"Monthly AI budget of ${cap:.2f} has been reached (estimated spend ${spent:.2f})."
@@ -117,10 +143,13 @@ def _budget_check() -> None:
 
 def usage_summary() -> dict[str, Any]:
     summary = _log().summary()
-    summary["monthly_cap_usd"] = config.AI_MONTHLY_CAP_USD
-    summary["remaining_usd"] = round(
-        max(0.0, config.AI_MONTHLY_CAP_USD - summary["est_cost_usd"]), 6
-    )
+    cap = config.AI_MONTHLY_CAP_USD
+    spent = summary["est_cost_usd"]
+    pct = (spent / cap * 100) if cap > 0 else 0.0
+    summary["monthly_cap_usd"] = cap
+    summary["remaining_usd"] = round(max(0.0, cap - spent), 6) if cap > 0 else None
+    summary["percent_used"] = round(pct, 2)
+    summary["warn"] = bool(cap > 0 and pct >= config.AI_BUDGET_WARN_PCT)
     return summary
 
 
@@ -138,15 +167,16 @@ def _record(
     output_tokens: int,
     latency_ms: int,
     status: str,
+    model: str,
 ) -> None:
     try:
         _log().record(
             provider=_provider(),
-            model=config.LLM_MODEL,
+            model=model,
             prompt=prompt_name,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            est_cost_usd=_estimate_cost(input_tokens, output_tokens),
+            est_cost_usd=_estimate_cost(input_tokens, output_tokens, model),
             latency_ms=latency_ms,
             status=status,
         )
@@ -169,14 +199,16 @@ def _call(
     prompt_name: str,
     as_json: bool,
     max_tokens: Optional[int] = None,
+    quality: str = QUALITY_FAST,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
     if not available():
         raise AIConfigError("No AI provider key configured on the server.")
     _budget_check()
+    model = model_for(quality)
 
     payload: dict[str, Any] = {
-        "model": config.LLM_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": system + "\n\n" + UNTRUSTED_SYSTEM_NOTE},
             {"role": "user", "content": user},
@@ -200,7 +232,7 @@ def _call(
             resp = _post(url, headers, payload, config.LLM_TIMEOUT)
         except (httpx.TimeoutException, httpx.HTTPError):
             latency = int((time.time() - started) * 1000)
-            _record(prompt_name, 0, 0, latency, "failed_transport")
+            _record(prompt_name, 0, 0, latency, "failed_transport", model)
             if attempt < attempts - 1:
                 time.sleep(
                     min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
@@ -216,7 +248,7 @@ def _call(
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"] or ""
             except (ValueError, KeyError, IndexError, TypeError):
-                _record(prompt_name, 0, 0, latency, "failed_response")
+                _record(prompt_name, 0, 0, latency, "failed_response", model)
                 raise AIRequestError("AI service returned an unexpected response.")
             usage = data.get("usage") or {}
             _record(
@@ -225,11 +257,12 @@ def _call(
                 int(usage.get("completion_tokens") or 0),
                 latency,
                 "ok",
+                model,
             )
             return content
 
         if resp.status_code in RETRYABLE_STATUS:
-            _record(prompt_name, 0, 0, latency, f"retry_{resp.status_code}")
+            _record(prompt_name, 0, 0, latency, f"retry_{resp.status_code}", model)
             if attempt < attempts - 1:
                 retry_after = (resp.headers.get("retry-after") or "").strip()
                 delay = (
@@ -241,7 +274,7 @@ def _call(
                 continue
             raise AIRequestError("AI service is rate limited or unavailable right now.")
 
-        _record(prompt_name, 0, 0, latency, f"failed_{resp.status_code}")
+        _record(prompt_name, 0, 0, latency, f"failed_{resp.status_code}", model)
         raise AIRequestError("AI request was rejected by the provider.")
 
     raise AIRequestError("AI request failed after retries.")
@@ -257,6 +290,7 @@ def complete_json(
     schema: Type[TModel],
     max_tokens: Optional[int] = None,
     version: str = "v1",
+    quality: str = QUALITY_FAST,
 ) -> Optional[TModel]:
     """Return schema-validated output, or None when no provider is configured.
 
@@ -268,7 +302,12 @@ def complete_json(
     system, _version = load_prompt(prompt_name, version)
 
     text = _call(
-        system=system, user=user, prompt_name=prompt_name, as_json=True, max_tokens=max_tokens
+        system=system,
+        user=user,
+        prompt_name=prompt_name,
+        as_json=True,
+        max_tokens=max_tokens,
+        quality=quality,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -285,6 +324,7 @@ def complete_json(
         prompt_name=prompt_name,
         as_json=True,
         max_tokens=max_tokens,
+        quality=quality,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -298,12 +338,20 @@ def complete_text(
     user: str,
     max_tokens: Optional[int] = None,
     version: str = "v1",
+    quality: str = QUALITY_FAST,
 ) -> Optional[str]:
     """Free-form completion (short copy). None when no provider is configured."""
     if not available():
         return None
     system, _version = load_prompt(prompt_name, version)
-    return _call(system=system, user=user, prompt_name=prompt_name, as_json=False, max_tokens=max_tokens).strip()
+    return _call(
+        system=system,
+        user=user,
+        prompt_name=prompt_name,
+        as_json=False,
+        max_tokens=max_tokens,
+        quality=quality,
+    ).strip()
 
 
 def _parse_and_validate(text: str, schema: Type[TModel]) -> tuple[Optional[TModel], str]:
