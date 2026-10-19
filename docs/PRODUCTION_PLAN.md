@@ -117,6 +117,31 @@ GitHub ↔ Vercel auto-deploy with separate preview/production env vars, GitHub 
 6. **Error monitoring**: enable Sentry now or defer to Phase 7?
 7. Billing: confirmed out of scope until you say otherwise.
 
+## 9a. Progress log
+
+### Phase 1 — AI layer: code complete, live in fallback mode
+
+Delivered in commit `9976d9c`:
+
+- `backend/ai/` package: provider-agnostic client (Groq default), retries with
+exponential backoff + jitter on timeouts/429/5xx, timeouts, output-token caps,
+hard monthly budget (`AI_MONTHLY_CAP_USD`), usage log (`ai_usage` table: prompt
+name, tokens, estimated cost, latency, status — never prompt contents).
+- Structured output validated with Pydantic (`backend/ai/schemas.py`), with one
+repair retry that feeds the validation error back; then an honest failure.
+- Prompts are versioned files in `backend/ai/prompts/*.v1.txt`.
+- Untrusted input delimited (`<untrusted_*>`) and model text sanitised.
+- `maxDuration: 60` set for the Vercel function.
+- 8 new unit tests; **119/119 tests pass**. Deployed and verified live
+(`/api/health` → `llm_mode: fallback`, workflow 7/7, store copy `generation_mode`
+`template` — no false "llm" labels).
+
+**Pending:** real-provider verification requires `LLM_API_KEY` in the Vercel
+project (Groq free tier). Until then the app truthfully reports fallback mode.
+**Known gap:** streaming (SSE) is not implemented — all current generations are
+short (≤800 tokens); the 60 s function limit is set, and streaming will be added
+together with the first long-generation feature rather than speculatively.
+
 ## 10. Definition of done (mapping)
 
 A stranger signs up → verifies email → uses every feature with real model output
