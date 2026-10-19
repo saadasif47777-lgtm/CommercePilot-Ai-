@@ -242,3 +242,34 @@ cd frontend && npm install && npm run dev     # http://localhost:3000
 
 If the public backend is asleep or unreachable during your presentation, the
 local stack is the backup: it needs no external service at all.
+
+---
+
+## 10. Single-project Vercel deployment (one URL, no card)
+
+This is the live deployment: **https://commercepilot-ai-one.vercel.app**
+(Vercel project `commerce-pilot1/commercepilot-ai`). One Vercel project serves
+the static React build *and* the FastAPI backend from the same origin, so there
+is no CORS configuration and no `VITE_API_BASE_URL` — the browser calls `/api/*`
+relatively and `vercel.json` routes it to the Python function.
+
+| File | Purpose |
+|---|---|
+| `api/index.py` | ASGI entry for Vercel's Python runtime (imports `backend.main:app`, sets `DB_PATH=/tmp/commercepilot.sqlite3`) |
+| `vercel.json` | `/api/*` → the function; everything else → `index.html` (SPA deep links) |
+| `package.json` (root) | `npm run build` installs `frontend/`, builds it and copies `frontend/dist` → `public/` |
+
+Redeploying: `vercel deploy --prod` (Vercel CLI already authenticated in the
+workspace). Deployment Protection must stay **off** for the URL to be public.
+
+**Ephemeral data (accepted trade-off):** Vercel functions only have `/tmp`,
+and each instance has its own copy, so projects reset on cold starts and may
+not be visible across instances. The **Example Project** button rebuilds the
+demo state in one click. For durable data, use the Render path in §3 with a
+disk, or a managed database.
+
+**Smoke test note:** `scripts/verify_deployment.py` was written for the split
+deployment in §1. Its three CORS/`VITE_API_BASE_URL` checks fail by design on
+the single-origin deployment (no cross-origin requests exist); the other 13
+checks — health, sample labelling, example project, full workflow, report,
+storefront, assistant, bundle secrets, SPA deep links — pass against it.
