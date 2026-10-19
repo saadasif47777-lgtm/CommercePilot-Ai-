@@ -14,7 +14,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from .. import llm
+from .. import ai
+from ..ai.schemas import StoreCopy
 from ..schemas import (
     BenefitsSection,
     BusinessBrief,
@@ -177,34 +178,32 @@ def build_spec(
 # --------------------------------------------------------------------------- #
 def _generate_copy(brief: BusinessBrief, product: Product, brand: str, personality: str) -> dict:
     copy_out = _template_copy(brief, product, brand, personality)
-    if not llm.llm_available():
-        return copy_out
-    prompt = (
-        f"Write storefront copy for an e-commerce store.\n"
-        f"Brand: {brand}\nIndustry: {brief.industry}\nNiche: {brief.niche}\n"
-        f"Audience: {brief.target_audience}\nPersonality: {personality}\n"
-        f"Product: {product.title} - {product.description}\n"
-        f"Return JSON keys: headline, subheadline, tagline, cta, header_cta, badge, featured_title, "
-        f"detail_title, detail_bullets (array of 4 short strings), benefits_title, faq_intro.\n"
-        "Plain, believable marketing copy. No claims about medical results."
-    )
-    text = llm.complete(
-        "You are an e-commerce copywriter. Return only valid JSON.", prompt, as_json=True
-    )
-    if not text:
-        return copy_out
-    import json
-
     try:
-        data = json.loads(text)
-        for key, value in data.items():
-            if isinstance(value, str) and value.strip():
-                copy_out[key] = value.strip()
-            elif isinstance(value, list) and all(isinstance(i, str) for i in value):
-                copy_out[key] = value[:5]
-        copy_out["generation_mode"] = "llm"
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
+        result = ai.complete_json(
+            prompt_name="store_copy",
+            schema=StoreCopy,
+            user=(
+                f"Brand: {ai.wrap_untrusted('brand', brand)}\n"
+                f"Industry: {ai.wrap_untrusted('industry', brief.industry)}\n"
+                f"Niche: {ai.wrap_untrusted('niche', brief.niche)}\n"
+                f"Audience: {ai.wrap_untrusted('audience', brief.target_audience)}\n"
+                f"Personality: {ai.wrap_untrusted('personality', personality)}\n"
+                f"Product: {ai.wrap_untrusted('product', product.title + ' - ' + product.description)}\n"
+                "Write the storefront copy now."
+            ),
+        )
+    except ai.AIError:
+        # Budget hit, provider outage or invalid output: keep template copy and
+        # leave generation_mode as "template" so the UI states the truth.
+        return copy_out
+    if result is None:
+        return copy_out
+    for key, value in result.model_dump(exclude_none=True).items():
+        if isinstance(value, str) and value.strip():
+            copy_out[key] = value
+        elif isinstance(value, list) and value:
+            copy_out[key] = value
+    copy_out["generation_mode"] = "llm"
     return copy_out
 
 

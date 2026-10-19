@@ -49,11 +49,22 @@ DB_PATH = Path(env("DB_PATH", str(BACKEND_DIR / "commercepilot.sqlite3"))).expan
 if DB_PATH.parent and not DB_PATH.parent.exists():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-# --- Optional LLM --------------------------------------------------------- #
-OPENAI_API_KEY = env("OPENAI_API_KEY")
-OPENAI_BASE_URL = env("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-OPENAI_MODEL = env("OPENAI_MODEL", "gpt-4o-mini")
+# --- AI provider (server-side only) -------------------------------------- #
+# Any OpenAI-compatible endpoint works. Groq is the default: strict JSON output
+# on its free tier and no training on inference data by default.
+LLM_PROVIDER = env("LLM_PROVIDER", "groq")
+LLM_API_KEY = env("LLM_API_KEY") or env("OPENAI_API_KEY")
+LLM_BASE_URL = env("LLM_BASE_URL") or env("OPENAI_BASE_URL")
+LLM_MODEL = env("LLM_MODEL", env("OPENAI_MODEL", "openai/gpt-oss-20b"))
 LLM_TIMEOUT = float(env("LLM_TIMEOUT", "20"))
+LLM_MAX_RETRIES = int(env("LLM_MAX_RETRIES", "2"))
+LLM_MAX_OUTPUT_TOKENS = int(env("LLM_MAX_OUTPUT_TOKENS", "800"))
+# Hard monthly spend cap (USD, estimated from token usage). 0 disables the cap.
+AI_MONTHLY_CAP_USD = float(env("AI_MONTHLY_CAP_USD", "25"))
+
+# Legacy aliases kept so existing references keep working.
+OPENAI_API_KEY = LLM_API_KEY
+OPENAI_MODEL = LLM_MODEL
 
 # --- Search --------------------------------------------------------------- #
 SERPER_API_KEY = env("SERPER_API_KEY")

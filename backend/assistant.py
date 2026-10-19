@@ -11,7 +11,8 @@ import json
 import re
 from typing import Any, Optional
 
-from . import llm
+from . import ai
+from .ai.schemas import AssistantIntent
 from .schemas import (
     AnalyzeRequest,
     BusinessBrief,
@@ -54,20 +55,17 @@ def _split_chain(message: str) -> list[str]:
 
 def _detect_intent(message: str) -> str:
     lowered = message.lower()
-    if llm.llm_available():
-        text = llm.complete(
-            "Classify the user message into one of: research, select, store, store_edit, campaign, "
-            "analyze, report, workflow, unknown. Return JSON {'intent': '...'}",
-            message,
-            as_json=True,
-        )
-        if text:
-            try:
-                intent = json.loads(text).get("intent")
-                if intent in {i[0] for i in INTENTS} or intent == "unknown":
-                    return intent
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
+    if ai.available():
+        try:
+            classified = ai.complete_json(
+                prompt_name="intent",
+                schema=AssistantIntent,
+                user=ai.wrap_untrusted("message", message, limit=1000),
+            )
+        except ai.AIError:
+            classified = None
+        if classified is not None:
+            return classified.intent
     for intent, pattern in INTENTS:
         if re.search(pattern, lowered):
             return intent

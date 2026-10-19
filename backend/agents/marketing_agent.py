@@ -12,7 +12,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from .. import llm
+from .. import ai
+from ..ai.schemas import CampaignCreatives
 from ..schemas import (
     BusinessBrief,
     CampaignPlan,
@@ -91,22 +92,19 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
     creatives = _generate_creatives(brief, product, request.objective)
     generation_mode = "template"
 
-    if llm.llm_available():
-        text = llm.complete(
-            "You are a performance marketing strategist. Return only JSON.",
-            _llm_prompt(brief, product, request),
-            as_json=True,
+    try:
+        llm_creatives = ai.complete_json(
+            prompt_name="campaign_creatives",
+            schema=CampaignCreatives,
+            user=_llm_prompt(brief, product, request),
         )
-        if text:
-            import json
-
-            try:
-                data = json.loads(text)
-                if isinstance(data.get("headlines"), list):
-                    generation_mode = "llm"
-                    _merge_llm_creatives(creatives, data)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
+    except ai.AIError:
+        # Budget hit, outage or invalid output: deterministic creatives stay and
+        # generation_mode remains "template" so nothing is misrepresented.
+        llm_creatives = None
+    if llm_creatives is not None and llm_creatives.headlines:
+        generation_mode = "llm"
+        _merge_llm_creatives(creatives, llm_creatives.model_dump(exclude_none=True))
 
     unit_profit = None
     if product.observed_price and product.estimated_cost is not None:
@@ -216,12 +214,16 @@ def _generate_creatives(brief: BusinessBrief, product: Product, objective: str) 
 
 
 def _llm_prompt(brief: BusinessBrief, product: Product, request: CampaignRequest) -> str:
+    product_text = f"{product.title} ({product.category}), {brief.currency} {product.observed_price}"
+    brand_text = f"{brief.business_name}, personality: {brief.brand_personality}"
+    audience_text = f"{brief.target_audience}, market: {brief.target_market}"
     return (
-        f"Product: {product.title} ({product.category}), {brief.currency} {product.observed_price}\n"
-        f"Brand: {brief.business_name}, personality: {brief.brand_personality}\n"
-        f"Audience: {brief.target_audience}, market: {brief.target_market}\n"
-        f"Objective: {request.objective}, budget: {request.budget} {brief.currency}, days: {request.duration_days}\n"
-        "Return JSON: {'headlines':[3 strings], 'primary_texts':[3 strings]} - believable, no fake statistics."
+        f"Product: {ai.wrap_untrusted('product', product_text)}\n"
+        f"Brand: {ai.wrap_untrusted('brand', brand_text)}\n"
+        f"Audience: {ai.wrap_untrusted('audience', audience_text)}\n"
+        f"Objective: {request.objective}, budget: {request.budget} {brief.currency}, "
+        f"days: {request.duration_days}\n"
+        "Write 3 headlines and 3 primary texts now."
     )
 
 
