@@ -1,9 +1,9 @@
 """Orchestrator tests: agent handoffs, persistence, retry, execution log."""
 import pytest
 
-from backend.schemas import AnalyzeRequest, CampaignRequest, ProjectCreate, ResearchRequest
-from backend.storage import ProjectStore
-from backend.workflows import commerce_workflow as wf
+from commercepilot.schemas import AnalyzeRequest, CampaignRequest, ProjectCreate, ResearchRequest
+from commercepilot.storage import ProjectStore
+from commercepilot.workflows import commerce_workflow as wf
 
 
 @pytest.fixture()
@@ -122,8 +122,8 @@ class TestFailureAndRetry:
         assert store.get(project["id"])["steps"]["brief"]["status"] == "success"
 
     def test_research_with_no_products_fails_cleanly(self, store, project, monkeypatch):
-        from backend.agents import product_hunter as ph
-        from backend.schemas import ResearchResult
+        from commercepilot.agents import product_hunter as ph
+        from commercepilot.schemas import ResearchResult
 
         monkeypatch.setattr(ph, "run", lambda req: ResearchResult(mode="sample", products=[]))
         p = store.get(project["id"])

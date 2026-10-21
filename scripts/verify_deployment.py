@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
-"""Deployment smoke test for CommercePilot AI.
+"""End-to-end smoke test for a running CommercePilot AI instance.
 
-Run it against any environment (local or deployed):
+Works against localhost or a deployed URL because the UI and API share one
+origin:
 
-    python scripts/verify_deployment.py \
-        --backend https://commercepilot-ai-api.onrender.com \
-        --frontend https://commercepilot-ai.vercel.app
+    python scripts/verify_deployment.py --base http://127.0.0.1:7860
 
-It checks the exact acceptance criteria used for judging:
-health endpoint, CORS, sample-data labelling, Example Project ->
-Run Full Commerce Workflow -> report -> assistant, and that the
-frontend bundle contains no secrets or localhost URLs.
-Exit code 0 = every check passed.
+It creates a disposable example project, runs the full workflow and checks the
+artifacts, then deletes the project. Exit code 0 means every check passed.
 """
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
-import time
 
 import httpx
 
@@ -28,177 +22,149 @@ results: list[tuple[str, str, str]] = []
 
 
 def check(name: str, ok: bool, detail: str = "", skip: bool = False) -> None:
+    """Record one check and print it as it runs."""
     results.append((SKIP if skip else PASS if ok else FAIL, name, detail))
+    print(f"  {results[-1][0]:4}  {name}" + (f"  —  {detail}" if detail else ""))
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--backend", required=True, help="Backend origin, no trailing slash")
-    ap.add_argument("--frontend", default="", help="Frontend origin (optional)")
-    ap.add_argument("--origin", default="", help="Origin for CORS checks (default: frontend)")
-    ap.add_argument("--timeout", type=float, default=60.0)
-    ap.add_argument("--keep", action="store_true", help="Keep the created test project")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", required=True, help="Origin of the app, no trailing slash")
+    parser.add_argument("--timeout", type=float, default=90.0, help="Per-request timeout")
+    parser.add_argument("--keep", action="store_true", help="Keep the created test project")
+    args = parser.parse_args()
 
-    backend = args.backend.rstrip("/")
-    frontend = args.frontend.rstrip("/")
-    origin = args.origin or frontend
-    client = httpx.Client(base_url=backend, timeout=args.timeout,
-                          headers={"Origin": origin} if origin else {})
+    base = args.base.rstrip("/")
+    client = httpx.Client(base_url=base, timeout=args.timeout)
+    project_id: str | None = None
 
-    # 1. Health, independently of the frontend ------------------------------
+    print(f"\nCommercePilot AI smoke test → {base}\n")
+
+    # ---- 1. the interface is served ------------------------------------ #
     try:
-        r = client.get("/api/health")
-        body = r.json() if r.status_code == 200 else {}
-        check("Backend health endpoint returns 200 JSON",
-              r.status_code == 200 and body.get("status") == "ok",
-              f"HTTP {r.status_code} {json.dumps(body)[:160]}")
-        check("Health reports llm_mode (fallback is expected without keys)",
-              "llm_mode" in body, str(body.get("llm_mode")))
-    except Exception as exc:  # noqa: BLE001
-        check("Backend health endpoint returns 200 JSON", False, str(exc))
+        page = client.get("/")
+        body = page.text
+        check("UI page returns 200", page.status_code == 200, f"HTTP {page.status_code}")
+        check(
+            "UI page contains the interface",
+            "CommercePilot AI" in body and "Product Hunter" in body,
+            f"{len(body):,} bytes",
+        )
+        leaked = re.findall(r"(?:sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{20,}|EAAG[A-Za-z0-9]{20,})", body)
+        check("UI page exposes no obvious secret", not leaked, f"{len(leaked)} match(es)")
+    except Exception as exc:
+        check("UI page returns 200", False, str(exc))
 
-    # 2. CORS ---------------------------------------------------------------
-    if origin:
-        try:
-            r = client.get("/api/health")
-            acao = r.headers.get("access-control-allow-origin", "")
-            check(f"CORS allows {origin}", acao == origin, f"ACAO={acao!r}")
-            r = client.request("OPTIONS", "/api/projects",
-                               headers={"Origin": origin,
-                                        "Access-Control-Request-Method": "POST",
-                                        "Access-Control-Request-Headers": "content-type"})
-            check("CORS preflight for POST succeeds",
-                  r.status_code in (200, 204) and
-                  r.headers.get("access-control-allow-origin") == origin,
-                  f"HTTP {r.status_code}")
-        except Exception as exc:  # noqa: BLE001
-            check("CORS allows " + origin, False, str(exc))
-    else:
-        check("CORS allows <frontend origin>", False, "no --frontend/--origin given", skip=True)
-
-    # 3. Sample data labelling ---------------------------------------------
+    # ---- 2. health ------------------------------------------------------ #
+    health: dict = {}
     try:
-        r = client.get("/api/products")
-        data = r.json()
-        products = data.get("products", [])
-        check("Sample catalogue returns products",
-              r.status_code == 200 and len(products) > 0, f"count={data.get('count')}")
-        check("Sample data is explicitly labelled as demo",
-              bool(data.get("is_sample_data")) and "DEMO" in str(data.get("disclaimer", "")).upper(),
-              str(data.get("disclaimer"))[:100])
-    except Exception as exc:  # noqa: BLE001
-        check("Sample catalogue returns products", False, str(exc))
+        response = client.get("/api/health")
+        health = response.json() if response.status_code == 200 else {}
+        check(
+            "Health endpoint reports ok",
+            response.status_code == 200 and health.get("status") == "ok",
+            f"llm_mode={health.get('llm_mode')}",
+        )
+        check(
+            "AI mode is explicit",
+            health.get("llm_mode") in ("llm", "fallback"),
+            str(health.get("llm_mode")),
+        )
+    except Exception as exc:
+        check("Health endpoint reports ok", False, str(exc))
 
-    # 4. Example Project -> full workflow ----------------------------------
-    project_id = ""
+    # ---- 3. sample data is labelled ------------------------------------- #
     try:
-        r = client.post("/api/projects", json={"example": True})
-        project_id = (r.json() or {}).get("id", "")
-        check("Example Project created (201)", r.status_code == 201 and bool(project_id),
-              f"HTTP {r.status_code}")
-    except Exception as exc:  # noqa: BLE001
-        check("Example Project created (201)", False, str(exc))
+        payload = client.get("/api/products").json()
+        sample_rows = payload.get("products", [])
+        check(
+            "Sample catalogue is labelled",
+            payload.get("is_sample_data") is True
+            and "DEMO" in (payload.get("disclaimer") or "")
+            and all(row.get("is_sample_data") for row in sample_rows),
+            f"{len(sample_rows)} products",
+        )
+    except Exception as exc:
+        check("Sample catalogue is labelled", False, str(exc))
+
+    # ---- 4. create + run a real project --------------------------------- #
+    try:
+        created = client.post("/api/projects", json={"example": True})
+        project_id = created.json().get("id")
+        check("Example project created", created.status_code == 201 and bool(project_id), str(project_id))
+    except Exception as exc:
+        check("Example project created", False, str(exc))
 
     if project_id:
         try:
-            started = time.time()
-            r = client.post(f"/api/projects/{project_id}/run-workflow",
-                            json={"auto_select": True, "mode": "sample"})
-            wf = r.json() if r.status_code == 200 else {}
-            steps = wf.get("steps") or []
-            statuses = [s.get("status") for s in steps] if isinstance(steps, list) else []
-            ok = (r.status_code == 200 and not wf.get("error")
-                  and bool(steps) and all(st == "success" for st in statuses))
-            check("Run Full Commerce Workflow completes", ok,
-                  f"HTTP {r.status_code} error={wf.get('error')} in "
-                  f"{time.time()-started:.1f}s steps={statuses}")
-        except Exception as exc:  # noqa: BLE001
-            check("Run Full Commerce Workflow completes", False, str(exc))
+            run = client.post(f"/api/projects/{project_id}/run-workflow", json={"mode": "sample"})
+            result = run.json()
+            statuses = [step["status"] for step in result.get("steps", [])]
+            check(
+                "Full workflow succeeds",
+                run.status_code == 200 and result.get("error") is None and statuses == ["success"] * 7,
+                str(statuses),
+            )
+            project = result.get("project") or {}
+            check(
+                "Product selected and report built",
+                bool(project.get("selected_product")) and bool(project.get("report")),
+            )
+        except Exception as exc:
+            check("Full workflow succeeds", False, str(exc))
 
-        for name, method, path, payload in [
-            ("Report generated", "GET", f"/api/projects/{project_id}/report", None),
-            ("Selected product passed to storefront", "GET", f"/api/projects/{project_id}", None),
-            ("Assistant answers with project context", "POST",
-             f"/api/projects/{project_id}/assistant", {"message": "What is my budget?"}),
-        ]:
-            try:
-                r = client.request(method, path, json=payload)
-                ok = r.status_code == 200
-                detail = f"HTTP {r.status_code}"
-                if ok and name.startswith("Selected"):
-                    proj = r.json()
-                    ok = bool(proj.get("selected_product")) and bool(proj.get("store_spec"))
-                    detail += f" product={bool(proj.get('selected_product'))} store={bool(proj.get('store_spec'))}"
-                if ok and name.startswith("Assistant"):
-                    ok = bool(r.json().get("reply"))
-                    detail += f" reply_len={len(str(r.json().get('reply')))}"
-                check(name, ok, detail)
-            except Exception as exc:  # noqa: BLE001
-                check(name, False, str(exc))
+        try:
+            export = client.get(f"/api/projects/{project_id}/store/export")
+            check(
+                "Storefront export is real HTML",
+                export.status_code == 200
+                and "text/html" in export.headers.get("content-type", "")
+                and export.text.lstrip().lower().startswith("<!doctype html"),
+                f"{len(export.text):,} bytes",
+            )
+        except Exception as exc:
+            check("Storefront export is real HTML", False, str(exc))
+
+        try:
+            simulation = client.post(f"/api/projects/{project_id}/campaign/simulate").json()
+            check(
+                "Campaign simulation is labelled DEMO",
+                simulation.get("label") == "DEMO - NOT PUBLISHED",
+                str(simulation.get("label")),
+            )
+        except Exception as exc:
+            check("Campaign simulation is labelled DEMO", False, str(exc))
+
+        try:
+            reply = client.post(
+                f"/api/projects/{project_id}/assistant",
+                json={"message": "show me the break-even point"},
+            ).json()
+            check(
+                "Assistant performs the action",
+                reply.get("intent") == "analyze" and "break-even" in (reply.get("reply") or "").lower(),
+                str(reply.get("intent")),
+            )
+        except Exception as exc:
+            check("Assistant performs the action", False, str(exc))
 
         if not args.keep:
             try:
-                client.delete(f"/api/projects/{project_id}")
-            except Exception:  # noqa: BLE001
-                pass
+                deleted = client.delete(f"/api/projects/{project_id}")
+                check("Test project cleaned up", deleted.status_code == 200)
+            except Exception as exc:
+                check("Test project cleaned up", False, str(exc))
 
-    # 5. Frontend -----------------------------------------------------------
-    if frontend:
-        try:
-            with httpx.Client(timeout=args.timeout, follow_redirects=True) as fc:
-                r = fc.get(frontend)
-                html = r.text
-                check("Frontend serves the app HTML",
-                      r.status_code == 200 and "<div id=\"root\"" in html,
-                      f"HTTP {r.status_code} {r.headers.get('content-type')}")
-                r = fc.get(frontend + "/assets")
-                assets = re.findall(r"src=\"(/assets/[^\"]+\.js)\"", html) or []
-                bundle = ""
-                if assets:
-                    b = fc.get(frontend + assets[0])
-                    bundle = b.text
-                # Dev servers have no built bundle (they serve modules on demand);
-                # fall back to the HTML so the check is never vacuous.
-                scan_target = bundle or html
-                check("JS bundle contains no secrets",
-                      not re.search(r"OPENAI_API_KEY|sk-[A-Za-z0-9]{20,}|EAAG\w+|shpat_\w+", scan_target),
-                      f"scanned {len(scan_target)} chars"
-                      + ("" if bundle else " (dev server: index.html only)"))
-                # The configured API base is allowed (it is deployment config);
-                # any OTHER localhost/127.0.0.1 URL would be a leftover dev default.
-                base_host = backend.split("//")[-1]
-                scan = scan_target.replace(base_host, "")
-                stray = re.search(r"(localhost|127\.0\.0\.1):\d+", scan)
-                check("JS bundle contains no stray localhost/127.0.0.1 URLs",
-                      stray is None, "clean" if stray is None else f"found {stray.group(0)}")
-                is_dev_server = "/@vite/client" in html
-                if backend:
-                    inlined = backend.split("//")[-1] in bundle
-                    check("JS bundle points at the deployed backend", inlined or is_dev_server,
-                          "base URL inlined" if inlined else
-                          ("dev server (same-origin proxy - expected)" if is_dev_server
-                           else "VITE_API_BASE_URL missing from this build"),
-                          skip=(is_dev_server and not inlined))
-                r = fc.get(frontend + "/store")
-                check("Client-side deep link /store returns the app (SPA fallback)",
-                      r.status_code == 200 and "<div id=\"root\"" in r.text, f"HTTP {r.status_code}")
-        except Exception as exc:  # noqa: BLE001
-            check("Frontend serves the app HTML", False, str(exc))
-    else:
-        check("Frontend checks", False, "--frontend not provided", skip=True)
-
-    # Report ----------------------------------------------------------------
-    width = max(len(n) for _, n, _ in results) if results else 0
-    failed = 0
-    for status, name, detail in results:
-        if status == FAIL:
-            failed += 1
-        print(f"[{status}] {name.ljust(width)}  {detail}")
-    print(f"\n{len(results) - failed}/{len(results)} checks passed"
-          + (f", {failed} FAILED" if failed else ""))
-    return 1 if failed else 0
+    # ---- summary -------------------------------------------------------- #
+    passed = sum(1 for state, _, _ in results if state == PASS)
+    failed = sum(1 for state, _, _ in results if state == FAIL)
+    skipped = sum(1 for state, _, _ in results if state == SKIP)
+    print(f"\n{passed} passed, {failed} failed, {skipped} skipped\n")
+    return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

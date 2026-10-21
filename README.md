@@ -1,160 +1,221 @@
 # CommercePilot AI
 
-**A unified, AI-powered e-commerce workspace** — discover products, generate an
-interactive storefront, plan a campaign and validate the economics, with four
-specialised agents handing their outputs to each other through one shared
-project context.
+An AI-powered e-commerce workspace — entirely in Python.
 
-Built for the *AI in Retail & E-commerce* competition category. Python + FastAPI
-backend, React + TypeScript + Tailwind frontend, SQLite persistence.
+Research products, generate a storefront, plan a campaign and validate the unit
+economics, with four specialised agents handing work to each other through one
+shared project. The interface is **Gradio** (no JavaScript, no build step); the
+JSON API is **FastAPI**; the data layer is SQLite via Pydantic models.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+# → http://localhost:7860
+```
+
+No API key is required to start. Without one the app runs in **labelled
+fallback mode** (deterministic templates) and says so everywhere.
 
 ---
 
-## What actually works (no simulations presented as real)
+## What the app does
 
-| Area | What it does | Real vs demo |
+| Tab | Purpose | Honest status |
 |---|---|---|
-| **Product Hunter** | Live web search (DuckDuckGo via `ddgs`, Serper if keyed) + a 16-product sample catalogue, merged and de-duplicated, scored by a transparent weighted heuristic | Live results keep source URLs; cost/demand/competition stay **unknown** when not evidenced. Sample rows are labelled *sample data* everywhere |
-| **Store Architect** | Parses the brief into a Pydantic-validated website specification and renders a genuinely interactive storefront (catalog search/filter, quantity steppers, add-to-cart, cart drawer with subtotal, mobile nav, FAQ accordion). Natural-language edits update the structured spec; export as standalone HTML | Generated from validated reusable components — **no arbitrary AI code is executed**. Reviews are labelled sample |
-| **Marketing Strategist** | Campaign plan (objective, 3 creative concepts, audience hypotheses, testing strategy, KPIs, risks) + budget allocator validated to sum exactly to the budget (PKR 30,000 → 7,500 testing / 19,500 scaling / 3,000 reserve) | Meta Marketing API is **Not Connected**. Simulated execution is labelled **DEMO — NOT PUBLISHED** and computes deterministic projections from stated assumptions (never random) |
-| **Business Analyst** | Real Python arithmetic: gross profit/unit, margin %, markup %, break-even ROAS, **contribution margin with per-unit overheads** (shipping, packaging, payment fees) and **break-even units** against fixed costs, CPA, conversion rate, budget utilisation, three editable scenarios | KPIs without data report **"no data"** rather than estimates. Break-even ROAS is explicitly documented as gross-profit-only |
-| **Orchestrator + Assistant** | 8-step workflow with per-step status, retry, execution log; the assistant **chains multi-stage requests** ("find products, build the store, plan the campaign, show break-even") and stops at approval gates | Runs plain typed Python functions — see *Why not Agno* below |
-| **Integrations panel** | Live status for LLM, web search, Meta, Shopify, storage with setup instructions; credentials save server-side only (git-ignored) and are never echoed to the browser | Meta/Shopify default to **not connected**; verification calls the real vendor APIs when configured |
+| **Dashboard** | Brief, pipeline status, consolidated report, one-click full workflow | Runs the 7 real steps and records each one |
+| **Product Hunter** | Rank candidates from live web search and/or a sample catalogue; save, reject or enter a product manually | Live rows keep their source URLs; unknown cost/demand/competition stay **unknown** |
+| **Store Builder** | Generate a complete storefront from a validated specification; restyle it with plain-English edits; preview and export | Template copy unless an AI key is configured; reviews are labelled sample content |
+| **Marketing Studio** | Campaign draft: allocation, audience hypotheses, creatives, KPIs, testing plan, labelled simulation | **Nothing is published.** Meta is not connected |
+| **Business Analytics** | Gross profit, margin, break-even ROAS, contribution margin, break-even units, KPIs, three scenarios | Real arithmetic; missing data reports *no data* instead of guessing |
+| **Assistant** | Plain-English requests routed to the real agents, including multi-step chains | Executes actual work or explains what it can do |
+| **Projects** | Create the example project, edit the brief, delete projects | Changing the brief resets downstream steps on purpose |
+| **Settings** | Connection status, AI usage against the budget, optional Meta/Shopify credentials | Credentials are stored server-side and never echoed back |
 
-**Fallback mode:** no AI API key is configured, so all copy is template/rule
-generated and the app says so (`llm_mode: "fallback"` in `/api/health`). Set
-`OPENAI_API_KEY` to activate LLM-assisted copy and intent parsing — calculations
-always stay in Python.
+Everything is reachable both in the UI and over the API (`/api`, interactive
+docs at `/docs`).
 
-## Quick start
+---
 
-```bash
-# 1. Backend (Python 3.12+)
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+## How the "AI" is wired
 
-# 2. Frontend (Node 20+)
-cd frontend && npm install && npm run dev   # http://localhost:3000
+* **One AI client** (`commercepilot/ai/`) speaks any OpenAI-compatible API.
+  Default provider: **Groq** free tier (`openai/gpt-oss-20b`), which supports
+  strict JSON output and does not train on inference data.
+* **Structured output only.** Model responses are validated against Pydantic
+  schemas, with exactly one repair attempt; a second failure returns an honest
+  error and the caller keeps its deterministic template. Nothing unvalidated is
+  rendered.
+* **Cost control built in.**
+  * `LLM_MODEL` handles every task (cheap model).
+  * `LLM_MODEL_STRONG` is optional and used only for storefront and ad copy.
+  * A hard monthly cap (`AI_MONTHLY_CAP_USD`, default $25) blocks calls *before*
+    the provider is contacted, with a warning at 80%.
+  * Every call is logged with model, tokens, estimated cost and latency — never
+    prompt contents.
+* **Prompt-injection defence.** User text and web snippets are delimited as
+  untrusted data with explicit instructions; prompts live in versioned files
+  (`commercepilot/ai/prompts/*.v1.txt`) so edits are reviewable.
+* **Calculations never use a model.** All money maths is ordinary Python in
+  `commercepilot/tools/calculations.py`, unit-tested.
+
+Set `LLM_API_KEY` to activate real model output. The app reports
+`llm_mode: "llm"` in `/api/health` when a key is present and `"fallback"`
+otherwise — it never claims AI when there is none.
+
+---
+
+## Project structure
+
+```
+app.py                          entry point: python app.py
+commercepilot/
+  config.py                     all environment configuration in one place
+  schemas.py                    Pydantic contracts shared by every layer
+  storage.py                    SQLite project store (JSON documents, WAL)
+  runtime.py                    shared store instance
+  api.py                        FastAPI routes under /api
+  webapp.py                     mounts the API and the Gradio UI in one process
+  assistant.py                  natural-language intent router
+  integrations.py               optional Meta / Shopify connections
+  store_export.py               renders a specification to standalone HTML
+  agents/
+    product_hunter.py           research + transparent weighted ranking
+    store_architect.py          storefront specification + plain-English edits
+    marketing_agent.py          campaign plan + validated budget allocation
+    business_analyst.py         unit economics, KPIs and scenarios
+  workflows/
+    commerce_workflow.py        orchestrator, per-step status, report builder
+  tools/
+    calculations.py             pure, validated arithmetic
+    web_search.py               Serper (if keyed) or DuckDuckGo via ddgs
+  ai/
+    client.py                   provider client: retries, JSON validation, budget
+    prompts.py + prompts/       versioned prompt text
+    schemas.py, guard.py, usage.py
+  ui/
+    app.py                      page shell, project selector, cross-tab refresh
+    theme.py, formatting.py, context.py, downloads.py, errors.py
+    tabs/                       one module per tab (dashboard, research, store, …)
+data/
+  sample_products.json          16 clearly-labelled demo products
+  commercepilot.sqlite3         created on first run (git-ignored)
+tests/                          135 tests: agents, workflow, API, UI, exports
+docs/                           architecture, manual test checklist, plan, proposal
+scripts/verify_deployment.py    HTTP smoke test for any environment
+render.yaml                     Render blueprint (free plan)
 ```
 
-Open http://localhost:3000 → **Example Project** → **Run Full Commerce Workflow**.
+Layer rule: `ui/` and `api.py` are both thin consumers of
+`workflows/` → `agents/` → `tools/`. Business rules live in exactly one place.
 
-> The Vite dev server proxies `/api` to the backend, so the browser only ever
-> talks to one origin. Use `VITE_API_TARGET` if the backend is elsewhere.
-
-### Production build (local check)
-
-```bash
-.venv/bin/python -m pytest tests/ -q          # 111 tests
-cd frontend && npm run build                  # type-check + bundle
-VITE_API_BASE_URL=https://<backend-host> npm run build   # bake in the API origin
-```
-
-For hosting (GitHub → Vercel + Render), follow **[DEPLOYMENT.md](DEPLOYMENT.md)**.
-
-### 60-second demo script (for judges)
-
-1. **Example Project** (top-right) — Noor Glow, a Pakistani skincare brand, PKR 30,000 budget.
-2. **Run Full Commerce Workflow** — watch the 8 steps complete with agent handoffs.
-3. **Product Hunter** — ranked shortlist; expand *Why this rank?* for the scoring breakdown and evidence; live rows link to their sources.
-4. **Add to Project** on a different product → **Store** → *Regenerate design* — the storefront rebuilds around it. Try the prompt *"Make this store look more luxurious"*, toggle Mobile preview, add items to the cart.
-5. **Marketing Studio** — edit an allocation; an allocation that doesn't sum to the budget is rejected (422). *Run simulated execution* shows the DEMO label and its assumptions.
-6. **Analytics** — profitability cards, break-even ROAS from the actual stored price/cost, editable scenarios, formula notes.
-7. **Settings** — integration status: LLM fallback, live search connected, Meta/Shopify not connected.
+---
 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests/ -q     # 111 tests: calculations, hunter, workflow, API
-cd frontend && npm run build             # type-checks + production build
-
-# Deployment smoke test - run against any environment (local or deployed):
-.venv/bin/python scripts/verify_deployment.py \
-    --backend http://127.0.0.1:8000 --frontend http://localhost:3000
+pip install -r requirements-dev.txt
+pytest -q
 ```
 
-The suite covers: ranking with known and missing data, gross profit/margin,
-break-even ROAS, zero-click/zero-profit edges, budget allocation validation,
-product → storefront → campaign → analyst handoffs, API validation and
-persistence across restarts.
+The suite covers:
+* calculations, including zero/negative/invalid inputs,
+* product ranking with and without evidence,
+* the full agent handoff chain and per-step failures,
+* API validation, persistence across restarts, credential masking,
+* AI client retry/repair/budget behaviour (with a stubbed transport),
+* the Gradio layout, formatting helpers, exports, and the mounted app serving
+  both UI and API.
 
-## API
+Deployment smoke test (works locally or against a deployed URL):
 
-`GET /api/health` · `GET /api/products` · `POST /api/research` ·
-`POST /api/projects` · `GET /api/projects/{id}` ·
-`POST /api/projects/{id}/select-product` · `generate-store` · `edit-store` ·
-`generate-campaign` · `analyze` · `run-workflow` · `GET .../report` ·
-`GET /api/integrations/status` (+ interactive docs at `/docs`).
-
-## Project layout
-
-```
-backend/
-  main.py                FastAPI routes (thin handlers)
-  schemas.py             Pydantic contracts (validation backbone)
-  storage.py             SQLite project store
-  agents/                product_hunter, store_architect, marketing_agent, business_analyst
-  workflows/             commerce_workflow.py — orchestrator + report builder
-  tools/                 calculations.py (pure math), web_search.py (live search)
-  data/                  sample_products.json (16 labelled demo products)
-frontend/src/
-  pages/ components/     8 app sections + storefront renderer, charts, chat
-  state/                 ProjectContext (shared project state)
-tests/                   111 automated tests
-scripts/                 verify_deployment.py (deployment smoke test)
-docs/                    architecture.md, manual-testing.md
-render.yaml              Render backend blueprint (optional, mirrors dashboard)
-frontend/vercel.json     Vercel SPA rewrite
+```bash
+python scripts/verify_deployment.py --base http://127.0.0.1:7860
 ```
 
-## Manual product entry & product curation
+---
 
-No search credentials or a niche outside the catalogue? **Enter a product
-manually** on the Product Hunter page: name, price, unit cost, description.
-Manual records are labelled *manually entered* and their economics are treated
-as user-provided data everywhere — the analyst, storefront and campaign work
-from them exactly as from researched products. `GET /api/products/manual-compare`
-previews the economics before anything is saved. Every research row can also be
-**saved to compare** or **rejected**; rejected products are excluded from later
-runs and auto-selection.
+## Deployment (free tier)
 
-## Honesty policy
+The app is one Python process, so it needs a host that can run a long-lived
+server (Vercel's serverless functions cannot run Gradio). **Render's free web
+service** is the documented target; `render.yaml` contains the exact settings:
 
-* Every sample record is labelled; live records keep their source URLs.
-* "Unknown" beats "invented": missing evidence is excluded from scoring (with weights renormalised and coverage shown), and KPIs without data say *no data*.
-* Simulations state their assumptions and are never presented as platform data.
-* No secrets in the repo: `.env` is git-ignored; integration credentials save to `backend/.secrets/` (also git-ignored) and are masked in every response.
+| Setting | Value |
+|---|---|
+| Build command | `pip install -r requirements.txt` |
+| Start command | `python app.py` |
+| Health check | `/api/health` |
+| Environment | `LLM_API_KEY` (optional), `DB_PATH` (optional), `PYTHON_VERSION=3.12` |
 
-## Deployment
+Details, limits and troubleshooting: [DEPLOYMENT.md](DEPLOYMENT.md).
 
-The app deploys as two services joined by one variable — full step-by-step
-settings, free-tier limits and troubleshooting are in
-**[DEPLOYMENT.md](DEPLOYMENT.md)**:
+**Free-tier caveats, stated plainly:**
+* Render free instances sleep after ~15 idle minutes; the first request takes
+  about a minute to wake the service.
+* The free instance has no persistent disk, so the SQLite database resets on
+  restart or redeploy. Click **Create example project** to rebuild the demo in
+  one step. Attach a disk (paid) and set `DB_PATH` to keep data.
+* LLM usage is $0 while inside Groq's free limits; the monthly cap exists for
+  the day you switch to a paid model or add real traffic.
 
-* **Frontend** → Vercel, Root Directory `frontend`, build `npm run build`,
-  output `dist`, env var `VITE_API_BASE_URL` = the backend origin.
-* **Backend** → Render, repo root, build `pip install -r requirements.txt`,
-  start `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`, health check
-  `/api/health`, env var `CORS_ORIGINS` = the frontend origin.
+---
 
-**Honesty notes for the deployed app:**
+## Configuration
 
-* Render's free instance has **no persistent disk** — SQLite project data resets
-  when the service restarts or redeploys. The sidebar's **Example Project**
-  button rebuilds the demo state in one click.
-* A free instance spins down after 15 idle minutes; the first request takes
-  ~1 minute to wake it, so open the site before you present.
-* The in-repo `render.yaml` and `frontend/vercel.json` mirror the dashboard
-  settings above; no deployed URL is hard-coded anywhere in this repository.
+Copy `.env.example` to `.env` (git-ignored) or set variables in the host
+dashboard. Values are names only here — no secrets are committed.
 
-This local preview environment (Cloudflare Workers) cannot run Python, so the
-live preview here is a local persistent stack rather than a public deployment.
+| Variable | Required | Purpose |
+|---|---|---|
+| `LLM_API_KEY` | no | Enables real model output; falls back to templates when absent |
+| `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_MODEL_STRONG` | no | Provider routing and the cheap/strong model split |
+| `AI_MONTHLY_CAP_USD`, `AI_BUDGET_WARN_PCT` | no | Hard spend cap and warning threshold |
+| `SERPER_API_KEY` | no | Richer live search; `ddgs` works without a key |
+| `DB_PATH` | no | SQLite location (point at a persistent disk in production) |
+| `PORT`, `HOST` | no | Bind address, default `0.0.0.0:7860` (Render sets `PORT`) |
+| `CORS_ORIGINS` | no | Only needed if a separate client calls the API |
+| `META_*`, `SHOPIFY_*` | no | Optional integrations; never sent to the browser |
+
+Secrets saved from the Settings tab go to `.secrets/` (git-ignored, mode 600)
+and are masked in every response. Environment variables always take precedence.
+
+---
+
+## Data provenance and honesty
+
+* Sample products, template copy, simulated campaign metrics and the example
+  brief are **labelled wherever they appear**.
+* "Unknown" beats "invented": missing evidence is excluded from scoring and the
+  remaining weights are renormalised; missing KPIs read *no data*.
+* The campaign simulation states its assumptions (CPC, conversion rate) and is
+  labelled `DEMO — NOT PUBLISHED`.
+* The storefront is generated from a validated specification; no model-written
+  code is ever executed.
+* Generated assets are downloadable: storefront HTML, campaign JSON, analysis
+  JSON, report JSON.
+
+---
+
+## Known limitations
+
+* **Single-user, no authentication.** Projects are shared by whoever can reach
+  the app; accounts are a later phase.
+* **SQLite only.** Fine for a demo and a single instance; Postgres is the
+  migration path for multi-instance hosting.
+* **Streaming is not implemented.** Current generations are short (≤800 output
+  tokens), so there is no UX need yet.
+* **Meta/Shopify are read-only or draft-only.** Nothing is published or synced.
+* The sample catalogue, example project and campaign simulator are still part of
+  the demo and are scheduled for removal in the next product phase.
+
+---
 
 ## Docs
 
-* [proposal.md](proposal.md) — competition proposal
-* [DEPLOYMENT.md](DEPLOYMENT.md) — deploying to Vercel + Render (settings, limits, troubleshooting)
-* [docs/architecture.md](docs/architecture.md) — system design and agent contracts
-* [docs/manual-testing.md](docs/manual-testing.md) — browser test checklist
-* [scripts/verify_deployment.py](scripts/verify_deployment.py) — automated deployment smoke test
+* [DEPLOYMENT.md](DEPLOYMENT.md) — hosting, environment variables, limits
+* [docs/architecture.md](docs/architecture.md) — layers, agent contracts, data flow
+* [docs/manual-testing.md](docs/manual-testing.md) — interactive test checklist
+* [docs/proposal.md](docs/proposal.md) — the original competition proposal
+* [docs/PRODUCTION_PLAN.md](docs/PRODUCTION_PLAN.md) — historical audit and phase plan

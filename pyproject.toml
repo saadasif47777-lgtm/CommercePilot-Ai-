@@ -1,0 +1,26 @@
+# Tooling configuration.
+#
+# Runtime dependencies intentionally live in requirements.txt because hosts
+# install that file directly. This file configures the tools around the code.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+# A focused, low-noise rule set: real errors, import hygiene, common bugs.
+select = ["E", "F", "W", "I", "B", "SIM", "RUF"]
+ignore = [
+    "E501",  # long lines are allowed where wrapping would hurt readability
+    "B008",  # FastAPI's `Body(...)` / `Query(...)` defaults are intentional
+    "RUF001", "RUF002", "RUF003",  # typographic characters (— · ×) in prose
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert on shapes; unpacking with unused names is normal there.
+"tests/*" = ["B011"]

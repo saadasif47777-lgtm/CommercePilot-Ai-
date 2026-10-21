@@ -1,5 +1,13 @@
 # CommercePilot AI — Production Plan (Phase 0 audit)
 
+> **Historical document.** This is the audit written before the production
+> phases started, kept as a record of what the project looked like and why each
+> decision was made. It describes the previous stack (React/TypeScript on
+> Vercel). The current application is Python-only — Gradio UI + FastAPI + SQLite
+> in one process — see [README](../README.md) and
+> [architecture](architecture.md) for the actual implementation. Section 11
+> (cost policy and free-tier limits) is still current.
+
 Status: **audit complete, no production code changed**. Every claim below was
 verified by reading the repository at commit `deaf75c` and by hitting the live
 deployment (<https://commercepilot-ai-one.vercel.app>), not from memory.

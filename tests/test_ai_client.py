@@ -1,4 +1,4 @@
-"""Tests for backend/ai: retries, schema validation, repair, budget and logging.
+"""Tests for commercepilot/ai: retries, schema validation, repair, budget and logging.
 
 The HTTP layer is monkeypatched, so these tests never call a provider.
 """
@@ -9,11 +9,11 @@ import json
 import httpx
 import pytest
 
-from backend import config
-from backend.ai import client as ai_client
-from backend.ai.client import AIBudgetExceeded, AIRequestError, AIValidationError
-from backend.ai.schemas import AssistantIntent
-from backend.ai.usage import UsageLog
+from commercepilot import config
+from commercepilot.ai import client as ai_client
+from commercepilot.ai.client import AIBudgetExceeded, AIRequestError, AIValidationError
+from commercepilot.ai.schemas import AssistantIntent
+from commercepilot.ai.usage import UsageLog
 
 
 class _Resp:

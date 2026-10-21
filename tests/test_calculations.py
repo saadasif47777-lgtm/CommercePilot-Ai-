@@ -1,7 +1,7 @@
 """Unit tests for the exact business calculations (Business Analyst core)."""
 import pytest
 
-from backend.tools import calculations as calc
+from commercepilot.tools import calculations as calc
 
 
 class TestGrossProfit:
@@ -146,7 +146,7 @@ class TestScenario:
         assert out["conversions"] == 20.0
         assert out["revenue"] == 49980.0
         assert out["ad_cost"] == 45000.0
-        assert out["net_profit"] == round(49980 - 16400 - 45000, 2)
+        assert out["net_profit"] == (49980 - 16400 - 45000)
 
     def test_zero_clicks(self):
         out = calc.scenario_projection(1000, 400, clicks=0, conversion_rate_pct=2, cpc=45)

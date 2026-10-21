@@ -1,33 +1,41 @@
-# Render Blueprint - CommercePilot AI backend (FastAPI).
+# Render Blueprint — CommercePilot AI (free plan).
 #
-# Usage: Render dashboard -> New + -> Blueprint -> pick this repository.
-# You can ignore this file and enter the same values manually in
-# New + -> Web Service; DEPLOYMENT.md documents both paths.
+# Usage: Render dashboard → New + → Blueprint → pick this repository.
+# DEPLOYMENT.md documents the same settings entered manually.
 services:
   - type: web
-    name: commercepilot-ai-api
+    name: commercepilot-ai
     runtime: python
     plan: free
-    # Monorepo: requirements.txt is at the repository root, so the working
-    # directory stays at the root and the app is imported as backend.main:app.
-    rootDir: .
+    # One process serves the Gradio UI at / and the JSON API at /api.
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python app.py
     healthCheckPath: /api/health
     envVars:
-      # Pin the interpreter we actually test with (local dev is Python 3.12).
+      # Pin the interpreter the project is tested with.
       - key: PYTHON_VERSION
         value: "3.12"
-      # REQUIRED: comma-separated allowed browser origins. Set the real value in
-      # the Render dashboard (Sync: false = you supply it, it is never committed).
-      - key: CORS_ORIGINS
+
+      # --- optional: real AI output -------------------------------------
+      # sync: false means "prompt me in the dashboard, never store in git".
+      # Without a key the app runs in labelled template mode.
+      - key: LLM_API_KEY
         sync: false
-      # Optional integrations - add in the dashboard, never commit values:
-      #   OPENAI_API_KEY, SERPER_API_KEY, META_ACCESS_TOKEN, META_AD_ACCOUNT_ID,
-      #   META_APP_ID, META_APP_SECRET, SHOPIFY_SHOP_DOMAIN, SHOPIFY_ADMIN_TOKEN
-      # SQLite location. Free instances have NO persistent disk, so project data
-      # resets when the instance restarts/deploys. To keep data, upgrade to a
-      # paid instance, attach a disk and set DB_PATH=/data/commercepilot.sqlite3.
+      # - key: LLM_MODEL
+      #   value: openai/gpt-oss-20b
+      # - key: LLM_MODEL_STRONG
+      #   value: openai/gpt-oss-120b
+      # - key: AI_MONTHLY_CAP_USD
+      #   value: "25"
+
+      # --- optional: richer live search --------------------------------
+      # Key-free DuckDuckGo search is used when this is absent.
+      # - key: SERPER_API_KEY
+      #   sync: false
+
+      # --- optional: persistent storage (paid disk only) ---------------
+      # The free plan has no disk, so SQLite resets on restart. Attach a disk
+      # and uncomment both lines to keep projects between deploys.
       # - key: DB_PATH
       #   value: /data/commercepilot.sqlite3
     # disk:

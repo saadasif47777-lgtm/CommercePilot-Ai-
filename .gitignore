@@ -1,41 +1,33 @@
-# Python
+# --- Python ---------------------------------------------------------------
 __pycache__/
 *.py[cod]
-.venv/
-.pytest_cache/
 *.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Secrets / local config
+# --- Secrets and local configuration --------------------------------------
 .env
 .env.*
 !.env.example
-backend/.secrets/
+.secrets/
+
+# --- Local databases and generated output ---------------------------------
 *.sqlite3
 *.sqlite3-shm
 *.sqlite3-wal
-*.db
-
-# Local databases
 *.sqlite
+data/*.sqlite3*
+exports/
 
-# Node
-node_modules/
-frontend/dist/
-frontend/tsconfig.tsbuildinfo
-*.tsbuildinfo
-.vite/
-
-# Editors / OS
+# --- Editors / OS ---------------------------------------------------------
 .DS_Store
 .idea/
 .vscode/
 *.log
-
-# Runtime artifacts
-frontend_dev.log
-backend_server.log
 *.pid
 *.tar.gz
-public/
-.vercel
-.env*

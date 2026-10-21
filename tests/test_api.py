@@ -2,23 +2,26 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as main
-from backend.storage import ProjectStore
+import commercepilot.api as api
+from commercepilot import runtime
+from commercepilot.storage import ProjectStore
 
 
 @pytest.fixture(autouse=True)
 def isolated_secrets(tmp_path, monkeypatch):
     """Keep integration credentials saved by tests inside a temp dir."""
-    from backend import config
+    from commercepilot import config
 
     monkeypatch.setattr(config, "SECRETS_DIR", tmp_path / "secrets")
     monkeypatch.setattr(config, "integration_secrets_path", lambda provider: tmp_path / "secrets" / f"{provider}.json")
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(main, "store", ProjectStore(tmp_path / "api.sqlite3"))
-    return TestClient(main.app)
+def client(tmp_path):
+    """Point the shared runtime at a throwaway database for each test."""
+    runtime.set_store(ProjectStore(tmp_path / "api.sqlite3"))
+    yield TestClient(api.app)
+    runtime.reset_store()
 
 
 @pytest.fixture()
@@ -81,12 +84,12 @@ class TestProjects:
 
     def test_persistence_across_client_restarts(self, tmp_path):
         db = tmp_path / "p.sqlite3"
-        main.store = ProjectStore(db)
-        c1 = TestClient(main.app)
+        runtime.set_store(ProjectStore(db))
+        c1 = TestClient(api.app)
         pid = c1.post("/api/projects", json={"example": True}).json()["id"]
         c1.post(f"/api/projects/{pid}/run-workflow", json={"mode": "sample"})
-        main.store = ProjectStore(db)  # simulated restart
-        c2 = TestClient(main.app)
+        runtime.set_store(ProjectStore(db))  # simulated restart
+        c2 = TestClient(api.app)
         body = c2.get(f"/api/projects/{pid}").json()
         assert body["selected_product"] is not None
         assert body["report"] is not None
@@ -113,7 +116,7 @@ class TestStore:
         assert resp.status_code == 422  # no product selected yet
 
     def test_select_then_generate(self, client, project_id):
-        client.post(f"/api/research", json={"niche": "skincare", "mode": "sample", "limit": 8})
+        client.post("/api/research", json={"niche": "skincare", "mode": "sample", "limit": 8})
         client.post(f"/api/projects/{project_id}/run-workflow", json={"mode": "sample"})
         resp = client.post(f"/api/projects/{project_id}/generate-store", json={})
         assert resp.status_code == 200

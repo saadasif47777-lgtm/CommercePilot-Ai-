@@ -1,8 +1,8 @@
 """Tests for Product Hunter: ranking, missing evidence, merging, filters."""
 import pytest
 
-from backend.agents import product_hunter as ph
-from backend.schemas import Product, ResearchRequest
+from commercepilot.agents import product_hunter as ph
+from commercepilot.schemas import Product, ResearchRequest
 
 REQ = ResearchRequest(
     niche="skincare", market="Pakistan", audience="women 18-34 urban",
