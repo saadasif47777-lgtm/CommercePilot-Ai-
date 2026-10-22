@@ -3,10 +3,11 @@
 // the same markup works on phones, tablets and desktops.
 
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useProject } from '../state/ProjectContext'
-import { Badge, Button } from './ui'
+import { errorText } from '../services/api'
+import { Badge, Button, ErrorBanner } from './ui'
 
 // Single source of truth for navigation: route, label and the SVG path drawn
 // as the item's icon. Add a page by adding one row here.
@@ -114,21 +115,30 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   )
 }
 
-// Sticky header: page title, project switcher and the one-click demo project.
+// Sticky header: page title, project switcher and the Add New Project action.
 export function TopBar({ onMenu }: { onMenu: () => void }) {
-  const { projects, project, selectProject, createProject, busy, run } = useProject()
+  const { projects, project, selectProject, createBlankProject } = useProject()
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const navigate = useNavigate()
   const loc = useLocation()
 
-  // Creating the example is two calls (create, then load) wrapped in `run` so
-  // the button shows a spinner and any failure surfaces in the global banner.
-  const startExample = async () => {
+  // Add New Project: creates a real, empty project (never the Noor Glow demo),
+  // makes it the active project, then opens the existing Settings page where the
+  // business brief and Meta/Shopify sections already live. Failures surface the
+  // real API error and deliberately do not navigate away.
+  const startNewProject = async () => {
+    if (creating) return
     setCreating(true)
-    await run('create-example', async () => {
-      const p = await createProject({ example: true })
-      await selectProject(p.id)
-    })
-    setCreating(false)
+    setCreateError(null)
+    try {
+      await createBlankProject()
+      navigate('/settings')
+    } catch (err) {
+      setCreateError(errorText(err))
+    } finally {
+      setCreating(false)
+    }
   }
 
   // Title comes from the same NAV list, so header and sidebar never disagree.
@@ -150,9 +160,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <div className="flex items-center gap-2">
             <span className="hidden text-xs font-semibold uppercase tracking-wide text-muted md:inline">Project</span>
             <select
-              className="max-w-[220px] rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink focus:border-brand/40 focus:outline-none"
+              className="max-w-[132px] rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink focus:border-brand/40 focus:outline-none sm:max-w-[220px]"
               value={project?.id ?? ''}
               onChange={(e) => e.target.value && selectProject(e.target.value)}
+              aria-label="Active project"
             >
               <option value="" disabled>
                 {projects.length ? 'Select project…' : 'No projects yet'}
@@ -166,8 +177,20 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             </select>
           </div>
 
-          <Button size="sm" variant="accent" busy={creating} onClick={startExample}>
-            Example Project
+          <Button
+            size="sm"
+            variant="accent"
+            busy={creating}
+            onClick={startNewProject}
+            title="Create a new blank project and open its business brief"
+            className="shrink-0 whitespace-nowrap"
+          >
+            {!creating && (
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            )}
+            Add New Project
           </Button>
 
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-mist px-3 py-1.5 md:flex">
@@ -176,6 +199,13 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </div>
         </div>
       </div>
+      {/* Creation errors belong next to the action that caused them, and are
+          shown on every page because this header is part of the app shell. */}
+      {createError && (
+        <div className="px-4 lg:px-7">
+          <ErrorBanner message={createError} onDismiss={() => setCreateError(null)} />
+        </div>
+      )}
     </header>
   )
 }

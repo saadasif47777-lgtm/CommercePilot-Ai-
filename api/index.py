@@ -7,8 +7,8 @@ browser talks to a single origin, no CORS configuration and no
 
 SQLite lives on ``/tmp`` — the only writable directory in a Vercel function — so
 project data is ephemeral and resets on cold starts or redeploys. That is an
-accepted trade-off of the free serverless tier: the app's Example Project
-button rebuilds the full demo state in one click.
+accepted trade-off of the free serverless tier: the app's "Explore the example
+project" button rebuilds the full demo state in one click.
 """
 
 import os

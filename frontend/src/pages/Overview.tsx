@@ -5,7 +5,7 @@
 //     project (and lists existing ones);
 //   * project open    -> workflow progress, brief, execution log and quick links.
 
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, ErrorBanner, FadeIn, PageHeader, SectionTitle, SkeletonCards, Stat } from '../components/ui'
@@ -17,16 +17,22 @@ const NEXT_LINK: Record<string, string> = {
 }
 
 export function OverviewPage() {
-  const { project, projects, loading, error, createProject, run, clearError, integrations } = useProject()
+  const { project, projects, loading, busy, error, createProject, createBlankProject, run, clearError, integrations } = useProject()
+  const navigate = useNavigate()
 
+  // Primary path: a real, empty project. Navigating happens only after the
+  // project exists, so a failed request never looks like a successful one.
+  const startBlank = () =>
+    run('create-blank', async () => {
+      await createBlankProject()
+      navigate('/settings')
+    })
+
+  // The seeded Noor Glow demo stays available, but only as an explicitly
+  // labelled example — never as the default way to create a project.
   const startExample = () =>
     run('create-example', async () => {
       await createProject({ example: true })
-    })
-
-  const startBlank = () =>
-    run('create-blank', async () => {
-      await createProject({ name: 'My commerce project' })
     })
 
   if (loading && !project) return <div className="py-10"><SkeletonCards count={3} /></div>
@@ -51,14 +57,20 @@ export function OverviewPage() {
             <div>
               <h2 className="font-display text-xl font-semibold">Start a Commerce Project</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted">
-                The fastest path is the seeded example: a Pakistani skincare brand (Noor Glow) with a
-                PKR 30,000 test budget. You can edit everything afterwards — or start blank.
+                Add a new project and enter your own business brief — you will land on Settings, where
+                the Meta and Shopify connections also live. Or explore the labelled example: a fictional
+                Pakistani skincare brand (Noor Glow) with a PKR 30,000 test budget.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
-                <Button size="lg" busy={false} onClick={startExample}>
-                  Start a Commerce Project
+                <Button size="lg" busy={busy === 'create-blank'} onClick={startBlank}>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Add New Project
                 </Button>
-                <Button size="lg" variant="secondary" onClick={startBlank}>Start blank</Button>
+                <Button size="lg" variant="secondary" busy={busy === 'create-example'} onClick={startExample}>
+                  Explore the example project
+                </Button>
               </div>
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[

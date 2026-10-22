@@ -116,7 +116,7 @@ project's Environment Variables page and redeploy after a change.
 
 | Limit | Effect | Mitigation |
 |---|---|---|
-| Ephemeral function filesystem | SQLite in `/tmp` resets on cold start/redeploy | Click **Example Project** to rebuild the demo; see §5 for persistence |
+| Ephemeral function filesystem | SQLite in `/tmp` resets on cold start/redeploy | Click **Explore the example project** on Overview to rebuild the demo; see §5 for persistence |
 | 60 s function duration (`maxDuration`) | A full workflow plus live search could approach it | Keep research limits modest; the UI runs steps individually too |
 | Function cold starts | First request after idle is slower | Open the URL before a demo |
 | 250 MB function bundle | Fine here: the Python dependencies are small | — |

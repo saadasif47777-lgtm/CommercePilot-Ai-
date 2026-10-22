@@ -8,7 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, errorText } from '../services/api'
-import type { IntegrationStatus, Project, ProjectSummary } from '../types'
+import type { BusinessBrief, IntegrationStatus, Project, ProjectSummary } from '../types'
 
 interface ProjectContextValue {
   projects: ProjectSummary[]
@@ -20,7 +20,8 @@ interface ProjectContextValue {
   refreshProjects: () => Promise<void>
   selectProject: (id: string) => Promise<void>
   refreshProject: () => Promise<void>
-  createProject: (payload: { name?: string; example?: boolean }) => Promise<Project>
+  createProject: (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) => Promise<Project>
+  createBlankProject: (name?: string) => Promise<Project>
   removeProject: (id: string) => Promise<void>
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>
   clearError: () => void
@@ -28,6 +29,30 @@ interface ProjectContextValue {
 
 const Ctx = createContext<ProjectContextValue | null>(null)
 const STORAGE_KEY = 'commercepilot.currentProject'
+
+// Placeholder name for a brand-new project. The backend requires a non-empty
+// business_name, so this becomes the project name until the user saves their
+// own business brief in Settings. No example data is seeded.
+export const BLANK_PROJECT_NAME = 'New Project'
+
+// An empty brief: only the placeholder name is filled in, every business
+// detail is left for the user. Matches the backend's BusinessBrief defaults.
+export function blankBrief(name: string): BusinessBrief {
+  return {
+    business_name: name,
+    industry: '',
+    niche: '',
+    target_market: 'Pakistan',
+    target_audience: '',
+    currency: 'PKR',
+    budget: 0,
+    brand_personality: '',
+    preferred_price_min: null,
+    preferred_price_max: null,
+    constraints: [],
+    notes: '',
+  }
+}
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -72,7 +97,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, [project])
 
   const createProject = useCallback(
-    async (payload: { name?: string; example?: boolean }) => {
+    async (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) => {
       const p = await api.createProject(payload)
       setProject(p)
       localStorage.setItem(STORAGE_KEY, p.id)
@@ -80,6 +105,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       return p
     },
     [refreshProjects],
+  )
+
+  // Real (non-example) project: created empty and immediately made active, so
+  // the caller can send the user straight to the business brief in Settings.
+  const createBlankProject = useCallback(
+    async (name: string = BLANK_PROJECT_NAME) => createProject({ name, brief: blankBrief(name) }),
+    [createProject],
   )
 
   const removeProject = useCallback(
@@ -133,10 +165,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ProjectContextValue>(
     () => ({
       projects, project, loading, busy, error, integrations,
-      refreshProjects, selectProject, refreshProject, createProject, removeProject, run,
+      refreshProjects, selectProject, refreshProject, createProject, createBlankProject, removeProject, run,
       clearError: () => setError(null),
     }),
-    [projects, project, loading, busy, error, integrations, refreshProjects, selectProject, refreshProject, createProject, removeProject, run],
+    [projects, project, loading, busy, error, integrations, refreshProjects, selectProject, refreshProject, createProject, createBlankProject, removeProject, run],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

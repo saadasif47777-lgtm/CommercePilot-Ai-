@@ -3,6 +3,7 @@
 // its research, storefront, campaign and analysis from the database.
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Modal, PageHeader, SectionTitle } from '../components/ui'
 import { ExecutionTimeline } from '../components/WorkflowPanel'
@@ -14,10 +15,18 @@ const STEP_LABELS: [string, string][] = [
 ]
 
 export function HistoryPage() {
-  const { projects, project, selectProject, removeProject, createProject, error, clearError, run } = useProject()
+  const { projects, project, selectProject, removeProject, createProject, createBlankProject, busy, error, clearError, run } = useProject()
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const navigate = useNavigate()
 
   const openProject = (id: string) => selectProject(id)
+
+  // Same real-project flow as the top bar: blank project, then its brief.
+  const addProject = () =>
+    run('new-project', async () => {
+      await createBlankProject()
+      navigate('/settings')
+    })
 
   // "Duplicate" creates a fresh project with a similar name; it intentionally
   // does not copy research or designs, so no stale results are carried over.
@@ -34,15 +43,22 @@ export function HistoryPage() {
         title="Project History"
         body="All projects persist in the local SQLite store and survive restarts. Open one to continue exactly where you left off."
         actions={
-          <Button onClick={() => run('new-project', async () => { await createProject({ example: true }) })}>
-            New example project
+          <Button busy={busy === 'new-project'} onClick={addProject}>
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add New Project
           </Button>
         }
       />
       {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
       {projects.length === 0 ? (
-        <EmptyState title="No projects yet" body="Create an example project to see the full 8-step workflow in action." />
+        <EmptyState
+          title="No projects yet"
+          body="Add a new project and enter its business brief to start the 8-step workflow."
+          action={<Button onClick={addProject} busy={busy === 'new-project'}>Add New Project</Button>}
+        />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {projects.map((p) => (
