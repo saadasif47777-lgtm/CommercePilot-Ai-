@@ -1,20 +1,19 @@
 # Deploying CommercePilot AI
 
-CommercePilot AI is **one Python process**: FastAPI serves the JSON API at
-`/api`, and Gradio is mounted at `/` for the interface. There is no build step,
-no Node.js and no separate frontend service.
+The project has two parts:
+
+* **`frontend/`** — React + TypeScript, built by Vite into static files.
+* **`commercepilot/`** — FastAPI backend, imported by `api/index.py` for Vercel
+  or served with Uvicorn anywhere else.
 
 ```
-GitHub ──► Render (free web service) ──► https://<name>.onrender.com
-             python app.py
-             ├── /            Gradio UI
-             ├── /api/*       JSON API
-             └── /docs        API reference
+GitHub ──► Vercel
+             build: npm run build        → public/  (static UI)
+             function: api/index.py      → /api/*   (FastAPI)
 ```
 
-> **Vercel is not a target.** Serverless functions cannot host a long-lived
-> Gradio server (websockets, in-process state). The earlier Vercel setup was
-> removed together with the TypeScript frontend.
+One origin serves both, so no CORS configuration or API base URL is needed in
+production.
 
 ---
 
@@ -25,52 +24,66 @@ python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                # optional: add LLM_API_KEY
-python app.py
+
+# terminal 1 — API
+uvicorn commercepilot.api:app --reload --port 8000
+
+# terminal 2 — UI with hot reload
+cd frontend
+npm ci
+npm run dev                         # http://localhost:3000
 ```
 
-* UI: <http://localhost:7860>
-* API health: <http://localhost:7860/api/health>
-* API docs: <http://localhost:7860/docs>
+Vite proxies `/api` to `http://127.0.0.1:8000` (override with `VITE_API_TARGET`),
+so the browser only talks to the exposed origin.
 
-Run the tests with `pip install -r requirements-dev.txt && pytest -q`.
+To serve the production build from FastAPI instead:
+
+```bash
+cd frontend && npm run build && cd ..
+python app.py                       # http://localhost:8000  (UI + API)
+```
+
+Run the checks with `pip install -r requirements-dev.txt && pytest -q`, then
+`cd frontend && npx tsc -b && npm run build`.
 
 ---
 
-## 2. Render (free plan)
+## 2. Vercel (single project, free plan)
 
-### Option A — Blueprint
+1. Push the repository to GitHub.
+2. Vercel → **Add New…** → **Project** → import the repository.
+3. Keep the defaults; [`vercel.json`](vercel.json) and
+   [`package.json`](package.json) already define the build.
+4. Add optional environment variables (§3), then **Deploy**.
 
-1. Push this repository to GitHub.
-2. Render dashboard → **New +** → **Blueprint** → select the repository.
-3. Render reads [`render.yaml`](render.yaml) and creates the web service.
-4. Add optional environment variables (below), then deploy.
-
-### Option B — manual Web Service
-
-| Field | Value |
+| Setting | Value |
 |---|---|
-| Name | `commercepilot-ai` |
-| Language | Python 3 |
-| Root Directory | *repository root* |
-| Build Command | `pip install -r requirements.txt` |
-| Start Command | `python app.py` |
-| Health Check Path | `/api/health` |
-| Instance Type | Free |
+| Framework preset | *Other* |
+| Root directory | repository root |
+| Build command | `npm run build` |
+| Output directory | `public` |
+| Install command | default (`npm install`) |
+| Serverless function | `api/index.py` (FastAPI) |
+| Rewrites | `/api/(.*)` → `api/index.py`, everything else → `index.html` |
 
-`app.py` binds to `0.0.0.0` and reads `PORT`, which Render supplies.
+`api/index.py` sets `DB_PATH=/tmp/commercepilot.sqlite3` because `/tmp` is the
+only writable directory in a function. The Python dependencies come from
+`requirements.txt` at the repository root.
 
 ### Verify the deployment
 
 ```bash
-curl https://<name>.onrender.com/api/health
+curl https://<project>.vercel.app/api/health
 # {"status":"ok","service":"commercepilot-ai","version":"1.0.0","llm_mode":"fallback","projects":0}
 
-python scripts/verify_deployment.py --base https://<name>.onrender.com
+curl -I https://<project>.vercel.app/          # 200 text/html
+python scripts/verify_deployment.py --base https://<project>.vercel.app
 ```
 
 The smoke test checks the UI page, the health endpoint, sample-data labelling,
-an example project through the full workflow, the storefront export and the
-assistant.
+an example project through the full workflow, the storefront export, the
+simulated campaign label and the assistant.
 
 ---
 
@@ -89,13 +102,13 @@ the app works without it.
 | `AI_MONTHLY_CAP_USD` | no | Hard monthly cap, default `25`; `0` disables |
 | `AI_BUDGET_WARN_PCT` | no | Warning threshold, default `80` |
 | `SERPER_API_KEY` | no | Google-style search results; free keyless `ddgs` is the default |
-| `DB_PATH` | no | SQLite file path. Use `/data/commercepilot.sqlite3` with a disk |
-| `PYTHON_VERSION` | recommended | `3.12` |
-| `CORS_ORIGINS` | no | Only for external API clients; the UI is same-origin |
+| `DB_PATH` | no | SQLite file path (see §5 for persistence) |
+| `CORS_ORIGINS` | no | Only when the UI is served from a different origin than the API |
+| `VITE_API_BASE_URL` | no | Build-time API origin for a split deployment; empty = same origin |
 | `META_*`, `SHOPIFY_*` | no | Optional; server-side only, never sent to the browser |
 
-Never commit real values. Locally they belong in `.env`; on Render use the
-dashboard's Environment tab (blueprint entries marked `sync: false` prompt you).
+Never commit real values. Locally they belong in `.env`; on Vercel use the
+project's Environment Variables page and redeploy after a change.
 
 ---
 
@@ -103,33 +116,54 @@ dashboard's Environment tab (blueprint entries marked `sync: false` prompt you).
 
 | Limit | Effect | Mitigation |
 |---|---|---|
-| Sleeps after ~15 idle minutes | First request takes ~1 minute | Open the URL before a demo |
-| Ephemeral filesystem | SQLite resets on restart/redeploy | Click **Create example project**; or attach a disk + `DB_PATH` |
-| 512 MB RAM | Fine for this app; large concurrent workflows could be tight | Keep research limits modest |
-| No background workers | Everything is request-driven | By design |
+| Ephemeral function filesystem | SQLite in `/tmp` resets on cold start/redeploy | Click **Example Project** to rebuild the demo; see §5 for persistence |
+| 60 s function duration (`maxDuration`) | A full workflow plus live search could approach it | Keep research limits modest; the UI runs steps individually too |
+| Function cold starts | First request after idle is slower | Open the URL before a demo |
+| 250 MB function bundle | Fine here: the Python dependencies are small | — |
 | Groq free tier | Rate limits, not spend | The app retries on 429, then falls back to templates with a visible label |
 
-Other free hosts that can run a long-lived Python server (for example a Hugging
-Face Space) also work; the app reads `PORT` and binds `0.0.0.0`, so no code
-changes are needed.
+The frontend bundle is a static asset, so it is served from Vercel's edge cache
+and is unaffected by cold starts.
 
 ---
 
-## 5. Troubleshooting
+## 5. Persistent data / self-hosting
+
+SQLite needs a writable, persistent disk. Any host that can run a Python process
+and build the frontend (Node 20+) works:
+
+```bash
+npm ci --prefix frontend && npm run build --prefix frontend
+pip install -r requirements.txt
+python app.py                       # binds 0.0.0.0:$PORT
+```
+
+Set `DB_PATH=/data/commercepilot.sqlite3` on a mounted disk and keep the default
+health check `/api/health`. If the host cannot run Node, build `frontend/dist`
+in CI and deploy it as an artifact — `app.py` serves that directory automatically
+and falls back to `index.html` for client-side routes.
+
+Alternatively, deploy the frontend to any static host and the API separately,
+then build the UI with `VITE_API_BASE_URL=https://api.example.com` and set
+`CORS_ORIGINS` on the API to the UI origin.
+
+---
+
+## 6. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| `ModuleNotFoundError: commercepilot` | Start command was run from a subdirectory, or the repo was deployed with a Root Directory other than the root |
-| `Address already in use` | Another process owns the port; stop it or set `PORT` |
-| UI loads but every action fails | Check `/api/health`; if the app is waking up, retry after a minute |
-| `llm_mode: fallback` unexpectedly | `LLM_API_KEY` is unset or blank on the platform; env vars are read at start, so redeploy after changing them |
-| Storefront preview blank | Generate the storefront first; the preview is the exported page served from `/api/projects/<id>/store/export` |
-| `AI budget ... has been reached` | `AI_MONTHLY_CAP_USD` reached. Raise it deliberately or wait for the next month; features fall back to templates |
-| Data disappeared after a deploy | Expected on the free plan (no persistent disk). See §4 |
+| `ModuleNotFoundError: commercepilot` | The function was deployed from a subdirectory; `api/index.py` expects the repository root |
+| UI loads but every action fails | Check `/api/health`. A rewritten `/api/*` that returns HTML means the rewrite is missing |
+| Blank page on a deep link | The SPA rewrite to `index.html` is missing in `vercel.json` |
+| `llm_mode: fallback` unexpectedly | `LLM_API_KEY` is unset/blank on the platform; env vars are read at start, so redeploy after changing them |
+| `AI budget ... has been reached` | `AI_MONTHLY_CAP_USD` reached. Raise it deliberately or wait for next month; features fall back to templates |
+| Data disappeared after a deploy | Expected with `/tmp`. See §5 for a persistent disk |
+| Vite dev shows a 403 "Blocked request" | The preview hostname must be allowed; set `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` when running `npm run dev` |
 
 ---
 
-## 6. What is deliberately not deployed
+## 7. What is deliberately not deployed
 
 * No ad platform publishing or Shopify writes — those stay drafts.
 * No user accounts yet; the service is single-tenant.

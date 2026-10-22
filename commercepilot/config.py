@@ -110,11 +110,12 @@ SHOPIFY_ADMIN_TOKEN = env("SHOPIFY_ADMIN_TOKEN")
 # Server
 # --------------------------------------------------------------------------- #
 HOST = env("HOST", "0.0.0.0")
-PORT = int(env("PORT", env("APP_PORT", "7860")))
-# The Gradio UI is same-origin, so CORS only matters for separate API clients.
+PORT = int(env("PORT", env("APP_PORT", "8000")))
+# The Vite dev server runs on :3000 and proxies /api to this server, so CORS is
+# only needed when the API is used directly from another origin.
 CORS_ORIGINS = [
     origin.strip()
-    for origin in env("CORS_ORIGINS", "http://localhost:7860,http://127.0.0.1:7860").split(",")
+    for origin in env("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
     if origin.strip()
 ]
 # Public base URL, used when the app links back to itself (optional).

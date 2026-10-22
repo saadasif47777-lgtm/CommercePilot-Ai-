@@ -16,6 +16,14 @@ htmlcov/
 !.env.example
 .secrets/
 
+# --- Node / frontend build output -----------------------------------------
+node_modules/
+frontend/dist/
+frontend/node_modules/
+public/
+.vite/
+*.tsbuildinfo
+
 # --- Local databases and generated output ---------------------------------
 *.sqlite3
 *.sqlite3-shm

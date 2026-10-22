@@ -1,7 +1,6 @@
 """Process-wide runtime state.
 
-The project store is created once and shared by the API, the Gradio UI and the
-assistant. Code must call :func:`get_store` at request time instead of importing
+The project store is created once and shared by the API and the assistant. Code must call :func:`get_store` at request time instead of importing
 a module-level instance, which keeps the database swappable in tests.
 
 Only the store lives here on purpose: everything else is stateless and receives

@@ -3,11 +3,11 @@
 This module only concerns itself with HTTP. Request bodies are validated by the
 Pydantic models in :mod:`commercepilot.schemas`, and every real action is
 performed by the orchestrator in :mod:`commercepilot.workflows.commerce_workflow`.
-That keeps the API, the Gradio UI and the automated tests calling exactly the
-same business logic.
+That keeps the API, the React interface and the automated tests calling exactly
+the same business logic.
 
-All routes live under ``/api`` so the UI can be mounted at ``/`` (see
-:mod:`commercepilot.webapp`).
+All routes live under ``/api`` so the built frontend can be served from ``/``
+(see ``app.py``).
 """
 from __future__ import annotations
 

@@ -1,0 +1,8 @@
+{
+  "name": "commercepilot-ai",
+  "private": true,
+  "description": "Single Vercel project: builds the React frontend into public/ and serves the FastAPI backend from api/index.py",
+  "scripts": {
+    "build": "npm --prefix frontend ci && npm --prefix frontend run build && rm -rf public && cp -r frontend/dist public"
+  }
+}

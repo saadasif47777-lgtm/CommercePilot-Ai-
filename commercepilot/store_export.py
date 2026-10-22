@@ -1,6 +1,6 @@
 """Render a validated storefront specification to standalone HTML.
 
-The Gradio preview and the downloadable file both come from this single
+The in-app preview and the downloadable file both come from this single
 renderer, so what you see in the app is exactly what you export. The output is
 plain HTML and CSS with no framework and no JavaScript: it opens anywhere and
 never executes generated code.

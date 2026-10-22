@@ -4,10 +4,10 @@
 
 ```
                     ┌──────────────────────────────────────────┐
-                    │  commercepilot.webapp (one ASGI process) │
+                    │   backend.main (one ASGI process)        │
                     │                                          │
-   Browser  ───────►│  Gradio UI  (commercepilot/ui)           │
-                    │  JSON API   (commercepilot/api.py, /api) │
+   Browser  ───────►│  React+TS SPA  (frontend/, served at /)  │
+                    │  JSON API      (backend/main.py, /api)   │
                     └───────────────┬──────────────────────────┘
                                     │  same functions, no HTTP hop
                                     ▼
@@ -29,12 +29,13 @@ pure validated arithmetic    Serper or key-free ddgs      client, schemas,
 
 Layer rules:
 
-1. `ui/` and `api.py` contain **no business rules**; they validate input, call
-   the orchestrator and render the result.
-2. `workflows/` owns sequencing, step status, invalidation and reports.
-3. `agents/` own domain logic and call `tools/` and `ai/` only.
-4. `tools/` is deterministic and fully unit-tested; money never goes through a
-   language model.
+1. `frontend/` (React + TypeScript) and `backend/main.py` contain **no
+   business rules**; they validate input, call the orchestrator and render the
+   result.
+2. `backend/workflows/` owns sequencing, step status, invalidation and reports.
+3. `backend/agents/` own domain logic and call `tools/` and `ai/` only.
+4. `backend/tools/` is deterministic and fully unit-tested; money never goes
+   through a language model.
 
 ## Shared project context
 
@@ -121,30 +122,29 @@ data or a false "AI-generated" label.
 ## Interface layer
 
 ```
-ui/app.py      page shell, active-project selector, cross-tab refresh
-ui/context.py  shared state: store access, project selector, dashboard payload
-ui/formatting.py  pure data → markdown/table rows helpers
-ui/downloads.py    storefront HTML, campaign/analysis/report JSON
-ui/errors.py       exception → short human message (+ server-side log)
-ui/tabs/*.py       one module per tab, each exposes build(ctx)
+frontend/src/state/      ProjectContext — shared project state
+frontend/src/services/   typed API client (api.ts)
+frontend/src/pages/      one route per step of the workflow
+frontend/src/components/ ui kit, charts, cards, workflow panel, preview
 ```
 
 Selecting a project refreshes every view from stored data, so the same project
-looks identical whichever tab you open. Handler arity matches the component
-outputs exactly; tests build the interface and exercise the callbacks.
+looks identical whichever page you open. The client talks to the same JSON
+endpoints the tests exercise, so the typed contracts are checked on both sides.
 
 ## Persistence
 
 SQLite (`data/commercepilot.sqlite3` by default), WAL mode, per-thread
 connections, one `projects` table holding JSON documents plus an `ai_usage`
-table. Projects survive restarts. On a host with an ephemeral filesystem the
-database resets with the instance — `DB_PATH` points at a persistent disk when
-one is available. Postgres is the migration path for multi-instance hosting.
+table (backend/storage.py). Projects survive restarts. When `DB_PATH` points at
+a persistent disk the projects outlive deployments; otherwise the database
+resets with the instance. Postgres remains the migration path for
+multi-instance hosting.
 
 ## Security
 
-* Secrets are read from environment variables or `.secrets/` (git-ignored,
-  mode 600); environment variables take precedence.
+* Secrets are read from environment variables via backend/config.py (never
+  committed).
 * Credentials are never returned to the browser: status responses contain
   booleans and a masked identifier only.
 * The AI API key is server-side only; the UI never receives it.
