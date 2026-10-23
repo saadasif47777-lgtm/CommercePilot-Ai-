@@ -250,6 +250,8 @@ def _call(
             except (ValueError, KeyError, IndexError, TypeError) as exc:
                 _record(prompt_name, 0, 0, latency, "failed_response", model)
                 raise AIRequestError("AI service returned an unexpected response.") from exc
+            if not isinstance(content, str) or not content.strip():
+                raise AIRequestError("AI service returned no usable text.")
             usage = data.get("usage") or {}
             _record(
                 prompt_name,
@@ -266,7 +268,7 @@ def _call(
             if attempt < attempts - 1:
                 retry_after = (resp.headers.get("retry-after") or "").strip()
                 delay = (
-                    float(retry_after)
+                    min(RETRY_MAX_DELAY, float(retry_after))
                     if retry_after.isdigit()
                     else min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
                 )
@@ -298,6 +300,8 @@ def complete_json(
     surface an honest message instead of showing invented data.
     """
     if not available():
+        if config.production():
+            raise AIConfigError("No AI provider key configured on the server.")
         return None
     system, _version = load_prompt(prompt_name, version)
 
@@ -342,6 +346,8 @@ def complete_text(
 ) -> Optional[str]:
     """Free-form completion (short copy). None when no provider is configured."""
     if not available():
+        if config.production():
+            raise AIConfigError("No AI provider key configured on the server.")
         return None
     system, _version = load_prompt(prompt_name, version)
     return _call(

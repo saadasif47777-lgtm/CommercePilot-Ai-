@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from .. import ai
+from .. import ai, config
 from ..agents import business_analyst, marketing_agent, product_hunter, store_architect
 from ..schemas import (
     WORKFLOW_STEPS,
@@ -35,7 +35,7 @@ from ..schemas import (
     WebsiteSpec,
     utcnow,
 )
-from ..storage import ProjectStore
+from ..storage import ConcurrentUpdate, ProjectStore
 
 
 class StepFailed(Exception):
@@ -73,6 +73,8 @@ EXAMPLE_BRIEF = BusinessBrief(
 
 
 def create_project(store: ProjectStore, payload: ProjectCreate) -> dict[str, Any]:
+    if config.production() and payload.example:
+        raise StepFailed("brief", "Example projects are disabled in production")
     brief = payload.brief or (EXAMPLE_BRIEF if payload.example else BusinessBrief())
     name = payload.name or (brief.business_name or "New commerce project")
     project = {
@@ -106,6 +108,8 @@ def update_brief(store: ProjectStore, project: dict, brief: BusinessBrief) -> di
     exactly one place. Keeping completed steps green after their source data
     changed would let stale results look current.
     """
+    for field in ("research", "selected_product", "store_spec", "campaign", "analysis", "report"):
+        project[field] = None
     project["brief"] = brief.model_dump()
     if brief.business_name:
         project["name"] = brief.business_name
@@ -143,6 +147,8 @@ def _finish(
     errors: Optional[list[str]] = None,
     warnings: Optional[list[str]] = None,
 ) -> None:
+    if isinstance(execution_id, AgentExecution):
+        execution_id = execution_id.id
     for row in project["executions"]:
         if row["id"] == execution_id:
             row["status"] = status
@@ -219,6 +225,8 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
                 *(result.warnings or []),
                 f"{original_count - len(result.products)} rejected product(s) hidden from this run.",
             ]
+    project["selected_product"] = None
+    invalidate_outputs(project)
     project["research"] = result.model_dump()
     if not result.products:
         _set_step(store, project, "research", "error", "No candidates found")
@@ -254,28 +262,31 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
 
 def _resolve_product(project: dict, product_id: Optional[str], auto_select: bool) -> Product:
     research = project.get("research") or {}
-    products = research.get("products") or []
+    products = [p for p in research.get("products") or [] if p["id"] not in project.get("rejected_product_ids", [])]
     if product_id:
         for row in products:
             if row["id"] == product_id:
-                return Product(**row)
+                return _usable_product(row)
         # Fallbacks: saved/compared products, manual entries, then any catalogue product
         for row in (project.get("saved_products") or []):
             if row.get("id") == product_id:
-                return Product(**row)
-        for row in product_hunter.load_sample_products():
+                return _usable_product(row)
+        for row in ([] if config.production() else product_hunter.load_sample_products()):
             if row.id == product_id:
                 return row
         raise StepFailed("select", f"Product '{product_id}' not found in research results, saved products, or the sample catalogue.")
     if project.get("selected_product"):
-        return Product(**project["selected_product"])
+        return _usable_product(project["selected_product"])
     if auto_select and products:
-        return Product(**products[0])
+        return _usable_product(products[0])
     raise StepFailed("select", "No product selected. Select a product or run with auto_select=true.")
 
 
 def step_select_product(store: ProjectStore, project: dict, product_id: Optional[str], auto_select: bool) -> Product:
     product = _resolve_product(project, product_id, auto_select)
+    if config.production() and product.is_sample_data:
+        raise StepFailed("select", "Sample products cannot be used in production")
+    invalidate_outputs(project)
     project["selected_product"] = product.model_dump()
     execution = _start(store, project, "Product Selection", product.title)
     _set_step(
@@ -332,6 +343,10 @@ def step_reject_product(store: ProjectStore, project: dict, product_id: str) -> 
     saved = project.get("saved_products") or []
     kept = [p for p in saved if p.get("id") != product_id]
     project["saved_products"] = kept
+    if (project.get("selected_product") or {}).get("id") == product_id:
+        project["selected_product"] = None
+        invalidate_outputs(project)
+        _set_step(store, project, "select", "pending", "Selected product rejected")
     research = project.get("research") or {}
     for row in research.get("products") or []:
         if row.get("id") == product_id:
@@ -352,16 +367,16 @@ def step_manual_product(store: ProjectStore, project: dict, payload) -> dict:
     raw = payload.model_dump()
     raw["id"] = _id("prd")
     raw["description"] = raw.get("description") or raw.get("notes") or ""
-    raw["source"] = "sample"  # schema Literal; the label below tells the truth
+    raw["source"] = "manual"
     raw["is_sample_data"] = False
-    raw["cost_is_estimate"] = True
+    raw["cost_is_estimate"] = raw.get("observed_cost") is None
     raw["ranking_reason"] = "Manually entered by the user; economics come from user-supplied figures, not web research."
     raw["confidence"] = "medium"
-    if raw.get("observed_cost"):
+    if raw.get("observed_cost") is not None:
         raw["estimated_cost"] = raw["observed_cost"]
         if raw.get("observed_price"):
             try:
-                from .tools.calculations import gross_margin_pct
+                from ..tools.calculations import gross_margin_pct
                 raw["margin_pct"] = gross_margin_pct(raw["observed_price"], raw["observed_cost"])
             except Exception:
                 raw["margin_pct"] = None
@@ -378,7 +393,9 @@ def step_manual_product(store: ProjectStore, project: dict, payload) -> dict:
         research = project["research"]
     else:
         research.setdefault("products", []).append(row)
+    invalidate_outputs(project)
     project["selected_product"] = row
+    _set_step(store, project, "research", "success", "User supplied product; no search performed")
     _set_step(store, project, "select", "success", f"{row['title']} entered manually and selected")
     _finish(store, project, execution, "success", f"manual product: {row['title'][:60]}")
     return _save(store, project)
@@ -399,6 +416,7 @@ def step_generate_store(
         _finish(store, project, execution.id, "error", errors=[str(exc)])
         _save(store, project)
         raise StepFailed("store", f"Store Architect failed: {exc}") from exc
+    project["report"] = None
     project["store_spec"] = spec.model_dump()
     _set_step(store, project, "store", "success", f"Storefront generated for {spec.brand_name}")
     _finish(
@@ -449,6 +467,7 @@ def step_generate_campaign(store: ProjectStore, project: dict, request: Campaign
         _finish(store, project, execution.id, "error", errors=[str(exc)])
         _save(store, project)
         raise StepFailed("campaign", f"Marketing Strategist failed: {exc}") from exc
+    project["analysis"] = project["report"] = None
     project["campaign"] = plan.model_dump()
     _set_step(store, project, "campaign", "success", f"{plan.objective} plan, {plan.currency} {plan.budget:,.0f}")
     _finish(
@@ -470,6 +489,8 @@ def step_simulate_campaign(store: ProjectStore, project: dict) -> dict:
     conversion rate), applied to the plan's own allocation. They are not
     measurements from Meta and are never presented as such.
     """
+    if config.production():
+        raise StepFailed("campaign", "Simulation is disabled in production; submit measured campaign actuals")
     if not project.get("campaign"):
         raise StepFailed("campaign", "Draft a campaign first - there is nothing to simulate yet.")
     plan = CampaignPlan(**project["campaign"])
@@ -515,6 +536,7 @@ def step_simulate_campaign(store: ProjectStore, project: dict) -> dict:
             "allocation. They are not measurements from any ad platform."
         ),
     }
+    project["analysis"] = project["report"] = None
     project["campaign"] = plan.model_dump()
     project["campaign"]["simulation"] = simulation
     _save(store, project)
@@ -538,6 +560,7 @@ def step_analyze(store: ProjectStore, project: dict, request: Optional[AnalyzeRe
         _finish(store, project, execution.id, "error", errors=analysis["errors"])
         _save(store, project)
         raise StepFailed("analyze", "; ".join(analysis["errors"]))
+    project["report"] = None
     project["analysis"] = analysis
     unit = analysis["unit_economics"]
     _set_step(
@@ -571,7 +594,7 @@ def step_report(store: ProjectStore, project: dict) -> dict:
 # Full workflow
 # --------------------------------------------------------------------------- #
 def run_full_workflow(
-    store: ProjectStore, project_id: str, auto_select: bool = True, mode: str = "both", force: bool = False
+    store: ProjectStore, project_id: str, auto_select: bool = True, mode: str = "live", force: bool = False
 ) -> dict[str, Any]:
     project = store.get(project_id)
     if not project:
@@ -638,7 +661,7 @@ def run_full_workflow(
         results["error"] = {"step": exc.step, "message": exc.message}
         results["project"] = store.get(project_id)
         return results
-    except KeyError:
+    except (KeyError, ConcurrentUpdate):
         raise
     except Exception as exc:  # unexpected - keep the failure visible and retryable
         _save(store, project)
@@ -676,7 +699,7 @@ def build_report(project: dict) -> dict:
                 f"Price {brief.currency} {product.get('observed_price') or '?'} | "
                 f"estimated cost {product.get('estimated_cost') or 'unknown'} | "
                 f"ranking score {product.get('score')} ({product.get('confidence')} confidence)",
-                "Sample/demo data" if product.get("is_sample_data") else "Live web evidence",
+                "Sample/demo data" if product.get("is_sample_data") else ("User-supplied data" if product.get("source") == "manual" else "Live web evidence"),
             ],
         })
     if spec:
@@ -732,7 +755,7 @@ def build_report(project: dict) -> dict:
     if spec:
         provenance.append("Storefront: generated from a structured spec, not arbitrary AI code.")
     if campaign:
-        provenance.append("Campaign: DEMO - not published to Meta; metrics shown are illustrative.")
+        provenance.append("Campaign: local draft, not published to Meta. Measured metrics exist only when supplied explicitly.")
     provenance.append(f"LLM: {'configured' if ai.available() else 'not configured (deterministic fallback mode)'}.")
 
     return {
@@ -750,3 +773,17 @@ def build_report(project: dict) -> dict:
             for w in (row.get("warnings") or [])
         })[:10],
     }
+
+
+def invalidate_outputs(project: dict) -> None:
+    for field in ("store_spec", "campaign", "analysis", "report"):
+        project[field] = None
+    for step in ("store", "campaign", "analyze", "report"):
+        project["steps"][step].update(status="pending", message="Inputs changed; regenerate output")
+
+
+def _usable_product(row: dict) -> Product:
+    product = Product(**row)
+    if config.production() and product.is_sample_data:
+        raise StepFailed("select", "Select a real product; legacy sample products are disabled in production")
+    return product

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .. import ai
+from .. import config
 from ..schemas import (
     AnalyzeRequest,
     BusinessBrief,
@@ -50,12 +50,14 @@ def analyze(
     currency = brief.currency or product.currency or "PKR"
     warnings: list[str] = []
     errors: list[str] = []
+    if product.currency and product.currency.upper() != currency.upper():
+        raise ValueError("Product and project currencies must match; automatic FX conversion is not supported")
 
     # ---- 1. Unit economics ------------------------------------------------ #
     price = product.observed_price
     # Manual/user-entered products store their cost in observed_cost; researched
     # products carry an explicitly-labelled estimate in estimated_cost.
-    cost = getattr(product, "observed_cost", None) or product.estimated_cost
+    cost = product.observed_cost if product.observed_cost is not None else product.estimated_cost
     unit: dict = {
         "selling_price": price,
         "product_cost": cost,
@@ -108,14 +110,14 @@ def analyze(
                           "extra_unit_cost": round(extra_per_unit, 2) if extra_per_unit else None,
                           "contribution_per_unit": None, "markup_pct": None,
                           "break_even_units": None}
-    if price and cost:
+    if price is not None and price > 0 and cost is not None:
         try:
-            contribution["markup_pct"] = calc.markup_pct(price, cost)
-            if extra_per_unit:
+            contribution["markup_pct"] = calc.markup_pct(price, cost) if cost > 0 else None
+            if request.overheads is not None:
                 contribution["contribution_per_unit"] = calc.contribution_margin_per_unit(
                     price, cost, extra_per_unit
                 )
-                if overheads.fixed_costs:
+                if overheads.fixed_costs is not None:
                     contribution["break_even_units"] = calc.break_even_units(
                         price, cost, extra_per_unit, overheads.fixed_costs
                     )
@@ -184,9 +186,13 @@ def analyze(
     scenarios: dict = {}
     assumptions_used: dict = {}
     for name, base in DEFAULT_SCENARIOS.items():
-        supplied = getattr(request, name, None) or base
-        cpc = supplied.cpc if supplied.cpc > 0 else DEFAULT_CPC
-        clicks = supplied.clicks if supplied.clicks and supplied.clicks > 0 else max(1.0, default_spend / cpc)
+        supplied = getattr(request, name, None)
+        if config.production() and supplied is None:
+            scenarios[name] = {"available": False, "reason": "Provide explicit scenario assumptions"}
+            continue
+        supplied = supplied or base
+        cpc = supplied.cpc if config.production() or supplied.cpc > 0 else DEFAULT_CPC
+        clicks = supplied.clicks if config.production() or supplied.clicks > 0 else max(1.0, default_spend / cpc)
         assumptions = ScenarioAssumptions(clicks=clicks, conversion_rate_pct=supplied.conversion_rate_pct, cpc=cpc)
         assumptions_used[name] = assumptions.model_dump()
         if price is None or cost is None:
@@ -276,5 +282,5 @@ def analyze(
             "conversion_rate": "conversions / clicks x 100",
         },
         "generated_at": utcnow(),
-        "analysis_mode": ai.mode(),
+        "analysis_mode": "deterministic",
     }

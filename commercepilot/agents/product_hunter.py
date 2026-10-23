@@ -17,6 +17,7 @@ factors are excluded and the remaining weights are renormalised.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -24,6 +25,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from .. import config
 from ..schemas import (
     DemandSignal,
     Product,
@@ -67,6 +69,8 @@ CURRENCY_HINTS = [
 # Sample dataset
 # --------------------------------------------------------------------------- #
 def load_sample_products() -> list[Product]:
+    if config.production():
+        raise ValueError("Sample catalogue is disabled in production")
     raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     products: list[Product] = []
     for row in raw["products"]:
@@ -161,7 +165,7 @@ def _live_product(result: SearchResult, index: int) -> Product:
         )
     ]
     return Product(
-        id=f"live-{index}",
+        id="live-" + hashlib.sha256(result.url.encode()).hexdigest()[:20],
         title=result.title or result.url,
         description=result.snippet[:400],
         category=category,
@@ -267,7 +271,7 @@ def score_product(
 
     known = {k: v for k, v in raw_scores.items() if v is not None}
     breakdown: list[ScoreFactor] = []
-    if known:
+    if known and sum(w[k] for k in known) > 0:
         known_weight_sum = sum(w[k] for k in known)
         score = 0.0
         for factor in ("margin", "demand", "competition", "audience_fit", "price_suitability"):
@@ -342,7 +346,7 @@ def _factor_note(factor: str, product: Product) -> str:
 
 
 def _ranking_reason(product: Product, known: dict, known_ratio: float, confidence: str) -> str:
-    if not known:
+    if not known or product.evidence_score is None:
         return "No scoring evidence available - listed for manual review only."
     top = sorted(known.items(), key=lambda kv: kv[1], reverse=True)[:2]
     parts = [f"{k.replace('_', ' ')} ({v:.0f}/100)" for k, v in top]
@@ -456,6 +460,10 @@ def _audience_keywords(audience: str) -> list[str]:
 
 def run(req: ResearchRequest) -> ResearchResult:
     """Execute Product Hunter. Never raises: failures become warnings."""
+    if config.production():
+        if req.mode == "sample":
+            raise ValueError("Sample research is disabled in production")
+        req = req.model_copy(update={"mode": "live"})
     started = time.time()
     warnings: list[str] = []
     sources: list[str] = []

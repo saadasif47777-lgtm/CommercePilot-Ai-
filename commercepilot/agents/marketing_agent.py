@@ -9,7 +9,7 @@ locally; simulated execution is visibly labelled "DEMO - NOT PUBLISHED".
 """
 from __future__ import annotations
 
-from .. import ai
+from .. import ai, config
 from ..ai.schemas import CampaignCreatives
 from ..schemas import (
     Allocation,
@@ -66,7 +66,9 @@ def default_allocations(total: float, objective: str) -> list[Allocation]:
 
 def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -> CampaignPlan:
     currency = brief.currency or product.currency or "PKR"
-    total = request.budget or brief.budget or 0.0
+    if product.currency and product.currency.upper() != currency.upper():
+        raise ValueError("Product and project currencies must match; automatic FX conversion is not supported")
+    total = request.budget if request.budget is not None else brief.budget
     warnings: list[str] = []
 
     if request.allocations:
@@ -79,6 +81,8 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
                 for a in validated["allocations"]
             ]
         except calc.CalculationError as exc:
+            if config.production():
+                raise
             warnings.append(f"Provided allocation rejected ({exc}); replaced with the default split.")
             allocations = default_allocations(total, request.objective)
     else:
@@ -97,12 +101,16 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
             user=_llm_prompt(brief, product, request),
         )
     except ai.AIError:
+        if config.production():
+            raise
         # Budget hit, outage or invalid output: deterministic creatives stay and
         # generation_mode remains "template" so nothing is misrepresented.
         llm_creatives = None
     if llm_creatives is not None and llm_creatives.headlines:
         generation_mode = "llm"
         _merge_llm_creatives(creatives, llm_creatives.model_dump(exclude_none=True))
+        if config.production():
+            creatives = creatives[:min(len(llm_creatives.headlines), len(llm_creatives.primary_texts or []))]
 
     unit_profit = None
     if product.observed_price and product.estimated_cost is not None:
@@ -138,6 +146,7 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
     ]
 
     plan = CampaignPlan(
+        publication="DRAFT - NOT PUBLISHED" if config.production() else "DEMO - NOT PUBLISHED",
         objective=request.objective,
         objective_detail=OBJECTIVE_DETAIL[request.objective],
         duration_days=request.duration_days,
@@ -152,7 +161,6 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
         risks_and_assumptions=risks + warnings,
         estimates_are_illustrative=True,
         status="draft",
-        publication="DEMO - NOT PUBLISHED",
         meta_connection="not_connected",
         generation_mode=generation_mode,
         created_at=utcnow(),

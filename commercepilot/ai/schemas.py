@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .. import config
 from .guard import sanitize_text
 
 
@@ -40,6 +41,12 @@ class StoreCopy(_Clean):
     benefits_title: Optional[str] = Field(None, max_length=160)
     faq_intro: Optional[str] = Field(None, max_length=400)
 
+    @model_validator(mode="after")
+    def require_live_copy(self):
+        if config.production() and not all((self.headline, self.subheadline, self.tagline, self.cta, self.header_cta, self.detail_bullets)):
+            raise ValueError("Complete headline, subheadline, tagline, cta, header_cta and detail_bullets are required")
+        return self
+
     @field_validator("detail_bullets")
     @classmethod
     def _bullets(cls, value):
@@ -53,6 +60,12 @@ class CampaignCreatives(_Clean):
 
     headlines: Optional[list[str]] = Field(None, max_length=5)
     primary_texts: Optional[list[str]] = Field(None, max_length=5)
+
+    @model_validator(mode="after")
+    def require_live_creatives(self):
+        if config.production() and (not self.headlines or not self.primary_texts or len(self.headlines) != len(self.primary_texts)):
+            raise ValueError("Matching nonempty headlines and primary_texts are required")
+        return self
 
     @field_validator("headlines", "primary_texts")
     @classmethod

@@ -1,3 +1,5 @@
+> Historical demo documentation. For current production behavior and release checks, see [DEPLOYMENT.md](../DEPLOYMENT.md).
+
 # Manual test checklist — CommercePilot AI
 
 Run `python app.py` and open <http://localhost:7860>. Every item below was also

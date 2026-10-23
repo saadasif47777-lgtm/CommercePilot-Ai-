@@ -55,21 +55,26 @@ class ProjectStore:
 
     # ---- CRUD ------------------------------------------------------------ #
     def save(self, project: dict[str, Any]) -> dict[str, Any]:
-        payload = json.dumps(project, ensure_ascii=False)
+        expected = int(project.get("_revision", 0))
+        updated = dict(project, _revision=expected + 1)
+        payload = json.dumps(updated, ensure_ascii=False, allow_nan=False)
         conn = self._conn()
         with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute("SELECT data FROM projects WHERE id=?", (project["id"],)).fetchone()
+            if existing:
+                actual = int(json.loads(existing["data"]).get("_revision", 0))
+                if actual != expected:
+                    raise ConcurrentUpdate(project["id"])
+            elif expected:
+                raise ConcurrentUpdate(project["id"])
             conn.execute(
-                "INSERT INTO projects (id, name, data, created_at, updated_at) VALUES (?,?,?,?,?) "
-                "ON CONFLICT(id) DO UPDATE SET name=excluded.name, data=excluded.data, "
-                "updated_at=excluded.updated_at",
-                (
-                    project["id"],
-                    project.get("name") or "Untitled project",
-                    payload,
-                    project.get("created_at", ""),
-                    project.get("updated_at", ""),
-                ),
+                "INSERT INTO projects (id,name,data,created_at,updated_at) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET name=excluded.name,data=excluded.data,updated_at=excluded.updated_at",
+                (project["id"], project.get("name") or "Untitled project", payload,
+                 project.get("created_at", ""), project.get("updated_at", "")),
             )
+        project["_revision"] = expected + 1
         return project
 
     def get(self, project_id: str) -> Optional[dict[str, Any]]:
@@ -101,3 +106,7 @@ class ProjectStore:
 
     def count(self) -> int:
         return self._conn().execute("SELECT COUNT(*) AS n FROM projects").fetchone()["n"]
+
+
+class ConcurrentUpdate(Exception):
+    """A stale project write was rejected; reload before retrying."""
