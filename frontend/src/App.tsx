@@ -17,6 +17,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { BusinessPage } from './pages/BusinessPage'
+import { CustomerSupportPage } from './pages/CustomerSupportPage'
 
 // Shell = sidebar + header + animated page area + footer.
 function Shell() {
@@ -52,6 +53,7 @@ function Shell() {
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/business" element={<BusinessPage />} />
+                <Route path="/support" element={<CustomerSupportPage />} />
                 <Route path="*" element={<OverviewPage />} />
               </Routes>
             </motion.div>

@@ -28,6 +28,10 @@ For an explicitly local demonstration, set `APP_MODE=demo`. That allows sample d
 5. Save selling price and supplier cost in Products. Analyze real prices and costs, supply campaign measurements, and enter explicit scenario assumptions. Later analysis updates preserve your existing actuals and overhead inputs.
 6. Export the storefront draft and project report. Publishing, checkout and ad buying are separate operations that this backend does not implement.
 
+## Shopify customer support
+
+Open **Customer Support** to sync Shopify's published catalog and policies, customize the assistant, add store FAQs, test real model answers and copy the customer chat installation code. The widget suggests products with saved prices and verified store links, answers from published policies, and directs personal order questions to your support contact. It uses the existing model and SQL database. See the [Shopify support setup guide](docs/SHOPIFY_SUPPORT.md) for permissions, installation, refresh behavior and limits.
+
 ## Scope and isolation
 
 This is a **single-client workspace**, not a multi-tenant SaaS. All visitors share all projects and integration settings; there is currently no user authorization. Deploy a separate instance, database and integration credentials for each client. Use `DATABASE_URL` for persistent PostgreSQL on Vercel; local SQLite requires a persistent disk. Production still rejects temporary SQLite on serverless hosts.

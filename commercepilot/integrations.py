@@ -191,7 +191,7 @@ def shopify_fetch_products(limit: int = 10) -> dict:
                 json={"query": """query Catalog($first: Int!) {
                     shop { currencyCode }
                     products(first: $first) { nodes {
-                        id title handle description featuredImage { url }
+                        id title handle description featuredMedia { preview { image { url } } }
                         variants(first: 1) { nodes { price } }
                     } pageInfo { hasNextPage endCursor } }
                 }""", "variables": {"first": max(1, min(limit, 50))}},
@@ -207,7 +207,7 @@ def shopify_fetch_products(limit: int = 10) -> dict:
             return {"ok": True, "currency": (payload["data"].get("shop") or {}).get("currencyCode"), "count": len(rows), "page_info": catalog["pageInfo"], "products": [
                 {"id": p.get("id"), "title": p.get("title"), "handle": p.get("handle"), "description": (p.get("description") or "")[:2000], "url": f"https://{clean}/products/{p.get('handle')}",
                  "price": ((p.get("variants") or {}).get("nodes") or [{}])[0].get("price"),
-                 "image": (p.get("featuredImage") or {}).get("url")}
+                 "image": (((p.get("featuredMedia") or {}).get("preview") or {}).get("image") or {}).get("url")}
                 for p in rows
             ]}
         if resp.status_code == 401:

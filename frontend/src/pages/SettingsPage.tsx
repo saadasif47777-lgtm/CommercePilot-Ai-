@@ -50,7 +50,7 @@ export function SettingsPage() {
           })
         }}>
           <Field label="Shop domain"><Input required value={domain} placeholder={integrations?.shopify.store_domain || 'your-store.myshopify.com'} onChange={e => setDomain(e.target.value)} /></Field>
-          <Field label="Admin API access token" hint="Use a token with read_products access for your store."><Input required type="password" autoComplete="new-password" value={shopToken} onChange={e => setShopToken(e.target.value)} /></Field>
+          <Field label="Admin API access token" hint="Use read_products; add read_legal_policies for customer support policy sync."><Input required type="password" autoComplete="new-password" value={shopToken} onChange={e => setShopToken(e.target.value)} /></Field>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" busy={busy === 'connect-shopify'} disabled={!!busy}>Connect Shopify</Button>
             <Button variant="secondary" disabled={!!busy} busy={busy === 'catalog'} onClick={() => perform('catalog', async () => {
@@ -60,6 +60,7 @@ export function SettingsPage() {
             })}>Load catalog</Button>
           </div>
         </form>
+        <Link to="/support" className="mt-4 inline-block text-sm text-brand underline">Set up Shopify customer support →</Link>
         {catalog && <div className="mt-5 space-y-3">
           <p className="text-xs text-muted">{catalog.count} products · {catalog.currency || 'currency unavailable'}. First 50 products; set supplier costs after importing.</p>
           {!project && <Link to="/business?new=1" className="text-sm text-brand underline">Create a business before importing →</Link>}

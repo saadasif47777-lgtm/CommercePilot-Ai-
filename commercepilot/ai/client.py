@@ -200,6 +200,8 @@ def _call(
     as_json: bool,
     max_tokens: Optional[int] = None,
     quality: str = QUALITY_FAST,
+    timeout: Optional[float] = None,
+    retries: Optional[int] = None,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
     if not available():
@@ -224,12 +226,12 @@ def _call(
         "content-type": "application/json",
     }
     url = f"{_base_url()}/chat/completions"
-    attempts = max(0, int(config.LLM_MAX_RETRIES)) + 1
+    attempts = max(0, int(config.LLM_MAX_RETRIES if retries is None else retries)) + 1
 
     for attempt in range(attempts):
         started = time.time()
         try:
-            resp = _post(url, headers, payload, config.LLM_TIMEOUT)
+            resp = _post(url, headers, payload, config.LLM_TIMEOUT if timeout is None else timeout)
         except (httpx.TimeoutException, httpx.HTTPError) as exc:
             latency = int((time.time() - started) * 1000)
             _record(prompt_name, 0, 0, latency, "failed_transport", model)
@@ -293,6 +295,8 @@ def complete_json(
     max_tokens: Optional[int] = None,
     version: str = "v1",
     quality: str = QUALITY_FAST,
+    timeout: Optional[float] = None,
+    retries: Optional[int] = None,
 ) -> Optional[TModel]:
     """Return schema-validated output, or None when no provider is configured.
 
@@ -312,6 +316,8 @@ def complete_json(
         as_json=True,
         max_tokens=max_tokens,
         quality=quality,
+        timeout=timeout,
+        retries=retries,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -329,6 +335,8 @@ def complete_json(
         as_json=True,
         max_tokens=max_tokens,
         quality=quality,
+        timeout=timeout,
+        retries=retries,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:

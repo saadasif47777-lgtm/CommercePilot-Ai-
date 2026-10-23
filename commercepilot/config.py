@@ -134,6 +134,8 @@ def integration_secrets_path(provider: str) -> Path:
 APP_MODE = env("APP_MODE", "production")
 SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", "2026-10")
 META_API_VERSION = env("META_API_VERSION", "v26.0")
+SUPPORT_KNOWLEDGE_HOURS = max(1, int(env("SUPPORT_KNOWLEDGE_HOURS", "24")))
+SUPPORT_DAILY_MESSAGES = max(1, int(env("SUPPORT_DAILY_MESSAGES", "300")))
 
 
 def production() -> bool:

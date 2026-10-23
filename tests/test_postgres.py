@@ -63,3 +63,50 @@ def test_postgres_credentials_encrypted_and_durable(target, monkeypatch):
     monkeypatch.setattr(config, "CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
     with pytest.raises(credentials.CredentialError):
         credentials.read("shopify")
+
+
+def test_postgres_support_snapshot_filters_and_sessions(target, monkeypatch):
+    from commercepilot.database import Database
+    from commercepilot.support import service, shopify
+    from commercepilot.support.models import QueryPlan, Settings
+    from commercepilot.support.store import SupportStore
+    from tests.test_support import DOMAIN, seed, transport_data
+
+    monkeypatch.setattr(config, "SHOPIFY_SHOP_DOMAIN", DOMAIN)
+    monkeypatch.setattr(config, "SHOPIFY_ADMIN_TOKEN", "test-shopify-secret")
+    monkeypatch.setattr(shopify, "graphql", transport_data)
+    first = SupportStore(Database(target))
+    seed(first)
+    first.save_settings(Settings(enabled=True))
+    second = SupportStore(Database(target))
+    state = second.state()
+    assert service.status(second)["ready"]
+    assert service.status(second)["counts"] == {"policy": 1, "product": 2}
+    products = second.products(state["active"], QueryPlan(intent="products", terms=["lamp"], max_price=25))
+    assert len(products) == 1 and products[0]["price"] == "20"
+    assert not second.products(state["active"], QueryPlan(intent="products", terms=["%_"]))
+    token = first.new_session(state)
+    assert second.reserve_session(state, token) == []
+    second.finish_session(token, [{"role": "user", "content": "A lamp"}])
+    assert first.reserve_session(state, token)[0]["content"] == "A lamp"
+    first.finish_session(token)
+
+
+def test_postgres_support_limit_concurrent_requests(target):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fastapi import HTTPException
+
+    from commercepilot.database import Database
+    from commercepilot.support.store import SupportStore
+
+    store = SupportStore(Database(target))
+    def attempt(_):
+        try:
+            store.limit("concurrent-test", 3, 3600)
+            return 200
+        except HTTPException as exc:
+            return exc.status_code
+    with ThreadPoolExecutor(max_workers=5) as workers:
+        outcomes = list(workers.map(attempt, range(5)))
+    assert outcomes.count(200) == 3 and outcomes.count(429) == 2
