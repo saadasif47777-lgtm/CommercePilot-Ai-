@@ -19,11 +19,12 @@ export interface Product {
   title: string
   description: string
   category: string
-  source: 'sample' | 'live' | 'merged'
+  source: 'sample' | 'live' | 'merged' | 'manual'
   source_url: string | null
   observed_price: number | null
   currency: string | null
   estimated_cost: number | null
+  observed_cost?: number | null
   cost_is_estimate: boolean
   demand_level: 'low' | 'medium' | 'high' | null
   demand_signals: DemandSignal[]

@@ -84,7 +84,7 @@ _usage: Optional[UsageLog] = None
 def _log() -> UsageLog:
     global _usage
     if _usage is None:
-        _usage = UsageLog(config.DB_PATH)
+        _usage = UsageLog(config.DATABASE_URL or config.DB_PATH)
     return _usage
 
 

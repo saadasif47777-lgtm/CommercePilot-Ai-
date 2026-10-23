@@ -9,16 +9,16 @@ import { useEffect, useState } from 'react'
 import { api, errorText } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, Field, Input, SectionTitle, Select, WarningList } from './ui'
-import { BudgetDonut, SimulationChart } from './Charts'
+import { BudgetDonut } from './Charts'
 
 export function CampaignPlanner() {
   const { project, run, refreshProject, busy } = useProject()
   const [objective, setObjective] = useState('sales')
-  const [budget, setBudget] = useState(30000)
+  const [budget, setBudget] = useState(0)
   const [duration, setDuration] = useState(14)
   const [allocations, setAllocations] = useState<{ label: string; amount: number; purpose: string }[]>([])
   const [allocError, setAllocError] = useState<string | null>(null)
-  const [actuals, setActuals] = useState({ ad_spend: '', clicks: '', conversions: '', customers: '' })
+  const [actuals, setActuals] = useState({ ad_spend: '', clicks: '', conversions: '', customers: '', revenue: '' })
 
   const plan = project?.campaign ?? null
 
@@ -75,13 +75,6 @@ export function CampaignPlanner() {
 
   // Simulation only projects spend/revenue from the stored assumptions; it is
   // labelled DEMO and never contacts Meta.
-  const simulate = () =>
-    run('simulate', async () => {
-      if (!project) return
-      await api.simulateCampaign(project.id)
-      await refreshProject()
-    })
-
   const analyzeWithActuals = () =>
     run('analyze-actuals', async () => {
       if (!project) return
@@ -103,7 +96,7 @@ export function CampaignPlanner() {
         <SectionTitle
           title="Campaign brief"
           subtitle="Uses the SAME product, audience and budget stored in the project."
-          right={<Badge tone="red">Meta: not connected</Badge>}
+          right={<Badge tone="neutral">Campaign plan</Badge>}
         />
         <div className="grid gap-4 md:grid-cols-4">
           <Field label="Objective">
@@ -121,7 +114,7 @@ export function CampaignPlanner() {
             <Input type="number" min={1} max={180} value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
           </Field>
           <div className="flex items-end">
-            <Button busy={busy === 'generate-campaign'} onClick={generate} className="w-full">
+            <Button busy={busy === 'generate-campaign'} onClick={generate} disabled={!project.selected_product || budget <= 0 || !!busy} className="w-full">
               {plan ? 'Regenerate plan' : 'Generate campaign plan'}
             </Button>
           </div>
@@ -147,8 +140,8 @@ export function CampaignPlanner() {
           <Card>
             <SectionTitle
               title="Creative concepts"
-              subtitle={plan.generation_mode === 'llm' ? 'Copy written with a configured LLM' : 'Template-generated copy (no LLM configured — fallback mode)'}
-              right={<Badge tone="amber">DEMO — NOT PUBLISHED</Badge>}
+              subtitle={plan.generation_mode === 'llm' ? 'Copy written with a configured LLM' : 'Earlier copy — regenerate with your configured model'}
+              right={<Badge tone="amber">Draft · not published</Badge>}
             />
             <div className="grid gap-4 md:grid-cols-3">
               {plan.creatives.map((c) => (
@@ -222,71 +215,11 @@ export function CampaignPlanner() {
             </div>
           </Card>
 
-          {/* ------------------------------------------------------ simulation */}
-          <Card>
-            <SectionTitle
-              title="Simulated execution"
-              subtitle="Applies your allocation to stated assumptions — deterministic, not random, not from Meta."
-              right={<Badge tone="red">DEMO — NOT PUBLISHED</Badge>}
-            />
-            {plan.simulation ? (
-              <>
-                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs text-warn">
-                  <p className="font-semibold">{plan.simulation.metric_source}</p>
-                  <p className="mt-1">Assumptions: CPC {plan.simulation.assumptions.cpc} {plan.currency}, conversion rate {plan.simulation.assumptions.conversion_rate_pct}%.</p>
-                  <p className="mt-1">{plan.simulation.disclaimer}</p>
-                </div>
-                <SimulationChart rows={plan.simulation.rows} currency={plan.currency} />
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-sm">
-                    <thead>
-                      <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                        <th className="py-2">Line</th>
-                        <th className="py-2 text-right">Spend</th>
-                        <th className="py-2 text-right">Clicks</th>
-                        <th className="py-2 text-right">Conversions</th>
-                        <th className="py-2 text-right">Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plan.simulation.rows.map((r) => (
-                        <tr key={r.label} className="border-b border-line/60">
-                          <td className="py-2">{r.label}{r.note && <span className="ml-2 text-xs text-muted">{r.note}</span>}</td>
-                          <td className="py-2 text-right tabular-nums">{r.spend.toLocaleString()}</td>
-                          <td className="py-2 text-right tabular-nums">{r.clicks.toLocaleString()}</td>
-                          <td className="py-2 text-right tabular-nums">{r.conversions.toFixed(2)}</td>
-                          <td className="py-2 text-right tabular-nums">{r.revenue.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                      <tr className="font-semibold">
-                        <td className="py-2">Total</td>
-                        <td className="py-2 text-right tabular-nums">{plan.simulation.totals.spend.toLocaleString()}</td>
-                        <td className="py-2 text-right"></td>
-                        <td className="py-2 text-right"></td>
-                        <td className="py-2 text-right tabular-nums">{plan.simulation.totals.revenue.toLocaleString()}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            ) : (
-              <div className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">
-                No simulation yet. Click “Run simulated execution” to project outcomes from your allocation
-                using clearly labelled sample assumptions.
-              </div>
-            )}
-            <div className="mt-3">
-              <Button variant="secondary" onClick={simulate} busy={busy === 'simulate'}>
-                Run simulated execution
-              </Button>
-            </div>
-          </Card>
-
-          {/* --------------------------------------------------------- actuals */}
+          {/* Measured campaign inputs */}
           <Card>
             <SectionTitle title="Real campaign numbers (optional)" subtitle="When you have real data from an ad account, enter it and the analyst computes actual CPA and conversion rate." />
             <div className="grid gap-3 md:grid-cols-5">
-              {(['ad_spend', 'clicks', 'conversions', 'customers'] as const).map((k) => (
+              {(['ad_spend', 'clicks', 'conversions', 'customers', 'revenue'] as const).map((k) => (
                 <Field key={k} label={k.replace('_', ' ')}>
                   <Input type="number" min={0} value={actuals[k]} placeholder="—" onChange={(e) => setActuals((a) => ({ ...a, [k]: e.target.value }))} />
                 </Field>

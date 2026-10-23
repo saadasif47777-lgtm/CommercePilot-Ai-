@@ -5,7 +5,7 @@
 // visible on the Store and Analytics pages. The last opened project id is kept
 // in localStorage so a page refresh restores the same workspace.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, errorText } from '../services/api'
 import type { BusinessBrief, IntegrationStatus, Project, ProjectSummary } from '../types'
@@ -18,6 +18,7 @@ interface ProjectContextValue {
   error: string | null
   integrations: IntegrationStatus | null
   refreshProjects: () => Promise<void>
+  refreshIntegrations: () => Promise<void>
   selectProject: (id: string) => Promise<void>
   refreshProject: () => Promise<void>
   createProject: (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) => Promise<Project>
@@ -61,11 +62,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null)
+  const activeRun = useRef(false)
+  const refreshIntegrations = useCallback(async () => { setIntegrations(await api.integrations()) }, [])
 
   // Reload the sidebar list of projects (cheap; called after create/delete).
   const refreshProjects = useCallback(async () => {
     const res = await api.listProjects()
-    setProjects(res.projects)
+    setProjects(res.projects.filter(p => !p.is_example))
     return undefined
   }, [])
 
@@ -76,6 +79,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     try {
       const p = await api.getProject(id)
       setProject(p)
+      setError(null)
       localStorage.setItem(STORAGE_KEY, id)
     } catch (err) {
       setError(errorText(err))
@@ -130,6 +134,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   // error, and converts any thrown API error into a readable banner message.
   const run = useCallback(
     async (label: string, fn: () => Promise<unknown>) => {
+      if (activeRun.current) return false
+      activeRun.current = true
       setBusy(label)
       setError(null)
       try {
@@ -139,6 +145,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         setError(errorText(err))
         return false
       } finally {
+        activeRun.current = false
         setBusy(null)
       }
     },
@@ -150,8 +157,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     ;(async () => {
       try {
-        const [integ] = await Promise.all([api.integrations(), refreshProjects()])
-        setIntegrations(integ)
+        const results = await Promise.allSettled([refreshIntegrations(), refreshProjects()])
+        for (const result of results) if (result.status === 'rejected') setError(errorText(result.reason))
         const last = localStorage.getItem(STORAGE_KEY)
         if (last) await selectProject(last)
       } catch (err) {
@@ -160,15 +167,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         setLoading(false)
       }
     })()
-  }, [refreshProjects, selectProject])
+  }, [refreshProjects, refreshIntegrations, selectProject])
 
   const value = useMemo<ProjectContextValue>(
     () => ({
       projects, project, loading, busy, error, integrations,
-      refreshProjects, selectProject, refreshProject, createProject, createBlankProject, removeProject, run,
+      refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, createBlankProject, removeProject, run,
       clearError: () => setError(null),
     }),
-    [projects, project, loading, busy, error, integrations, refreshProjects, selectProject, refreshProject, createProject, createBlankProject, removeProject, run],
+    [projects, project, loading, busy, error, integrations, refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, createBlankProject, removeProject, run],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

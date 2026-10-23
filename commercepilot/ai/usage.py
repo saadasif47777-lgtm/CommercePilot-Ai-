@@ -6,11 +6,12 @@ never prompt contents — so the log cannot leak user data.
 """
 from __future__ import annotations
 
-import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+from ..database import Database
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS ai_usage (
@@ -37,19 +38,13 @@ def _utcnow() -> str:
 class UsageLog:
     def __init__(self, path: Path | str):
         self.path = str(path)
-        self._local = threading.local()
+        self._database = Database(path)
         self._init_lock = threading.Lock()
         self._initialized = False
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(self.path, timeout=15)
-            conn.row_factory = sqlite3.Row
-            self._local.conn = conn
-        return conn
+    def _conn(self):
+        return self._database
 
     def _init_db(self) -> None:
         with self._init_lock:

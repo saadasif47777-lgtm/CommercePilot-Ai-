@@ -27,7 +27,7 @@ export function AnalyticsPage() {
   // Copy the server's assumptions into editable local state whenever a new
   // analysis arrives (keyed by its timestamp, not by object identity).
   useEffect(() => {
-    if (analysis?.assumptions) setAssumptions(JSON.parse(JSON.stringify(analysis.assumptions)))
+    setAssumptions({ conservative: { clicks: 0, conversion_rate_pct: 0, cpc: 0 }, base: { clicks: 0, conversion_rate_pct: 0, cpc: 0 }, best: { clicks: 0, conversion_rate_pct: 0, cpc: 0 }, ...analysis?.assumptions })
   }, [analysis?.generated_at]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyAssumptions = () =>
@@ -70,7 +70,7 @@ export function AnalyticsPage() {
       await refreshProject()
     })
 
-  if (!project) return <EmptyState title="No project selected" body="Select a project to analyse its economics." />
+  if (!project?.selected_product) return <EmptyState title="Select a product first" body="Select or import your product in Products, then enter its selling price and supplier cost to calculate profitability." />
 
   const unit = analysis?.unit_economics
   const currency = analysis?.currency ?? project.brief.currency
@@ -295,7 +295,7 @@ export function AnalyticsPage() {
           {/* -------------------------------------------------- product comparison */}
           {compareProducts.length > 1 && (
             <Card>
-              <SectionTitle title="Product comparison" subtitle="Shortlisted products with known price and estimated cost (sample/demo economics)." />
+              <SectionTitle title="Product comparison" subtitle="Your shortlisted products with known selling prices and supplier costs." />
               <ProductComparisonChart products={compareProducts} currency={currency} />
             </Card>
           )}

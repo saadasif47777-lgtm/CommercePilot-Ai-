@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ProjectProvider } from './state/ProjectContext'
+import { ProjectProvider, useProject } from './state/ProjectContext'
 import { Sidebar, TopBar } from './components/Layout'
 import { OverviewPage } from './pages/Overview'
 import { AssistantPage } from './pages/AssistantPage'
@@ -16,11 +16,14 @@ import { MarketingPage } from './pages/MarketingPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { BusinessPage } from './pages/BusinessPage'
+import { AuthGate } from './components/AuthGate'
 
 // Shell = sidebar + header + animated page area + footer.
 function Shell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
+  const { project } = useProject()
 
   return (
     <div className="min-h-screen bg-mist">
@@ -32,7 +35,7 @@ function Shell() {
               transition whenever the route changes. */}
           <AnimatePresence mode="wait">
             <motion.div
-              key={location.pathname}
+              key={location.pathname + ':' + (project?.id ?? '')}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
@@ -49,13 +52,14 @@ function Shell() {
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/business" element={<BusinessPage />} />
                 <Route path="*" element={<OverviewPage />} />
               </Routes>
             </motion.div>
           </AnimatePresence>
         </main>
         <footer className="px-6 pb-6 pt-2 text-center text-[11px] text-muted">
-          CommercePilot AI — competition prototype. Demo data is labelled throughout · Meta &amp; Shopify: not connected · calculations are real Python.
+          CommercePilot AI · Your business, products and campaign planning workspace.
         </footer>
       </div>
     </div>
@@ -66,9 +70,7 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <ProjectProvider>
-        <Shell />
-      </ProjectProvider>
+      <AuthGate><ProjectProvider><Shell /></ProjectProvider></AuthGate>
     </BrowserRouter>
   )
 }

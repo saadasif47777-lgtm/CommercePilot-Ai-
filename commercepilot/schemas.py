@@ -188,6 +188,12 @@ class ProjectCreate(BaseModel):
     brief: Optional[BusinessBrief] = None
 
 
+class ProductEconomicsUpdate(BaseModel):
+    observed_price: float = Field(..., gt=0)
+    observed_cost: float = Field(..., ge=0)
+    currency: str = Field(..., min_length=3, max_length=8)
+
+
 class BriefUpdate(BaseModel):
     brief: BusinessBrief
 

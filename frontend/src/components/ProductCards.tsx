@@ -15,6 +15,7 @@ export function money(value: number | null | undefined, currency = 'PKR'): strin
 // Provenance is always visible: sample vs live web vs merged.
 export function SourceBadge({ product }: { product: Product }) {
   if (product.source === 'live') return <Badge tone="blue">live web result</Badge>
+  if (product.source === 'manual') return <Badge tone="blue">your product</Badge>
   if (product.source === 'merged') return <Badge tone="blue">merged (sample + live)</Badge>
   return <Badge tone="amber">sample data</Badge>
 }

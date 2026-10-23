@@ -6,13 +6,14 @@ import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useProject } from '../state/ProjectContext'
-import { errorText } from '../services/api'
+import { errorText, signOut } from '../services/api'
 import { Badge, Button, ErrorBanner } from './ui'
 
 // Single source of truth for navigation: route, label and the SVG path drawn
 // as the item's icon. Add a page by adding one row here.
 const NAV = [
   { to: '/', label: 'Overview', icon: 'M4 6h16M4 12h16M4 18h10', end: true },
+  { to: '/business', label: 'Business information', icon: 'M4 21V5h16v16M8 9h8M8 13h8M8 17h4' },
   { to: '/assistant', label: 'AI Commerce Assistant', icon: 'M12 3l2.2 5.3L20 10l-5.8 1.7L12 17l-2.2-5.3L4 10l5.8-1.7z' },
   { to: '/products', label: 'Product Hunter', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zm10 2l-4.35-4.35' },
   { to: '/store', label: 'Store Architect', icon: 'M4 9l1-4h14l1 4M4 9v10h16V9M4 9h16M9 19v-6h6v6' },
@@ -95,9 +96,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </nav>
           <div className="border-t border-line p-4">
             <div className="rounded-lg bg-mist p-3 text-xs text-muted">
-              <p className="font-semibold text-ink">Prototype mode</p>
+              <p className="font-semibold text-ink">Client workspace</p>
               <p className="mt-1 leading-relaxed">
-                Demo/sample data is labelled throughout. Meta &amp; Shopify: not connected.
+                Your business information connects research, store design and campaign planning.
               </p>
               {project && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -132,8 +133,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
     setCreating(true)
     setCreateError(null)
     try {
-      await createBlankProject()
-      navigate('/settings')
+      navigate('/business?new=1')
     } catch (err) {
       setCreateError(errorText(err))
     } finally {
@@ -195,7 +195,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
 
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-mist px-3 py-1.5 md:flex">
             <span className="dot-pulse h-1.5 w-1.5 rounded-full bg-accent" />
-            <span className="text-xs font-medium text-muted">Demo data labelled</span>
+            <button onClick={signOut} className="text-xs font-medium text-muted">Sign out</button>
           </div>
         </div>
       </div>

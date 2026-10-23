@@ -22,18 +22,7 @@ export function OverviewPage() {
 
   // Primary path: a real, empty project. Navigating happens only after the
   // project exists, so a failed request never looks like a successful one.
-  const startBlank = () =>
-    run('create-blank', async () => {
-      await createBlankProject()
-      navigate('/settings')
-    })
-
-  // The seeded Noor Glow demo stays available, but only as an explicitly
-  // labelled example — never as the default way to create a project.
-  const startExample = () =>
-    run('create-example', async () => {
-      await createProject({ example: true })
-    })
+  const startBlank = () => navigate('/business?new=1')
 
   if (loading && !project) return <div className="py-10"><SkeletonCards count={3} /></div>
 
@@ -57,9 +46,7 @@ export function OverviewPage() {
             <div>
               <h2 className="font-display text-xl font-semibold">Start a Commerce Project</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted">
-                Add a new project and enter your own business brief — you will land on Settings, where
-                the Meta and Shopify connections also live. Or explore the labelled example: a fictional
-                Pakistani skincare brand (Noor Glow) with a PKR 30,000 test budget.
+                Enter your business information, research products or import your Shopify catalog, then create AI copy and a campaign plan using your own data.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button size="lg" busy={busy === 'create-blank'} onClick={startBlank}>
@@ -68,13 +55,10 @@ export function OverviewPage() {
                   </svg>
                   Add New Project
                 </Button>
-                <Button size="lg" variant="secondary" busy={busy === 'create-example'} onClick={startExample}>
-                  Explore the example project
-                </Button>
               </div>
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  ['Product Hunter', 'live web + sample data'],
+                  ['Product Hunter', 'live web research'],
                   ['Store Architect', 'interactive storefront'],
                   ['Marketing Studio', 'campaign + budget'],
                   ['Business Analyst', 'tested calculations'],
@@ -94,7 +78,7 @@ export function OverviewPage() {
                 ))}
               </ol>
               <p className="mt-4 text-xs text-white/60">
-                Demo data is labelled throughout. Meta &amp; Shopify integrations are shown as Not Connected.
+                Connect Shopify and Meta in Connections & AI to work with your own accounts.
               </p>
             </div>
           </div>
@@ -113,10 +97,10 @@ export function OverviewPage() {
 
         {integrations && (
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <IntegrationMini name="AI model" status={integrations.llm.status} note={integrations.llm.status === 'connected' ? integrations.llm.model : 'fallback mode'} />
+            <IntegrationMini name="AI model" status={integrations.llm.status} note={integrations.llm.model || 'Configure your model'} />
             <IntegrationMini name="Live web search" status={integrations.web_search.status} note={integrations.web_search.provider} />
-            <IntegrationMini name="Meta Marketing API" status={integrations.meta.status} note="not published — demo only" />
-            <IntegrationMini name="Shopify Admin API" status={integrations.shopify.status} note="preview works standalone" />
+            <IntegrationMini name="Meta Marketing API" status={integrations.meta.status} note="Read-only account reporting" />
+            <IntegrationMini name="Shopify Admin API" status={integrations.shopify.status} note="Catalog read and product import" />
           </div>
         )}
       </div>
@@ -170,7 +154,7 @@ export function OverviewPage() {
 
           <FadeIn delay={0.05}>
             <Card>
-              <SectionTitle title="Business brief" subtitle="Shared context every agent reads and updates." right={<Link to="/settings" className="text-xs font-semibold text-brand hover:underline">Edit in Settings</Link>} />
+              <SectionTitle title="Business brief" subtitle="Shared context every agent reads and updates." right={<Link to="/business" className="text-xs font-semibold text-brand hover:underline">Edit business information</Link>} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <BriefRow label="Business" value={project.brief.business_name || '—'} />
                 <BriefRow label="Niche" value={project.brief.niche || project.brief.industry || '—'} />
@@ -202,9 +186,9 @@ export function OverviewPage() {
             <Card>
               <SectionTitle title="Quick actions" />
               <div className="grid gap-2">
-                <QuickAction to="/products" label="Research products" desc="Live web search + sample catalogue" />
+                <QuickAction to="/products" label="Research products" desc="Live web research or your catalog" />
                 <QuickAction to="/store" label="Generate storefront" desc="Structured spec → interactive preview" />
-                <QuickAction to="/marketing" label="Plan campaign" desc="Creatives, budget validation, DEMO simulation" />
+                <QuickAction to="/marketing" label="Plan campaign" desc="AI creatives and validated budgets" />
                 <QuickAction to="/analytics" label="Analyse profitability" desc="Margins, break-even ROAS, scenarios" />
               </div>
             </Card>
@@ -275,7 +259,7 @@ function IntegrationMini({ name, status, note }: { name: string; status: string;
     <div className="rounded-xl border border-line bg-paper p-4">
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-semibold text-ink">{name}</p>
-        {connected ? <Badge tone="green" pulse>connected</Badge> : <Badge tone="neutral">not connected</Badge>}
+        {connected ? <Badge tone="green" pulse>connected</Badge> : <Badge tone="neutral">{status === 'configured_unverified' ? 'needs verification' : 'not connected'}</Badge>}
       </div>
       <p className="mt-1 text-xs text-muted">{note}</p>
     </div>

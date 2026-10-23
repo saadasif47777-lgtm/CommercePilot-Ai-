@@ -7,10 +7,11 @@ Projects therefore survive page refreshes and backend restarts.
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 from pathlib import Path
 from typing import Any, Optional
+
+from .database import Database
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -21,34 +22,33 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at DESC);
+CREATE TABLE IF NOT EXISTS integration_verifications (
+    provider TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    checked_at TEXT NOT NULL
+);
 """
 
 
 class ProjectStore:
     def __init__(self, path: Path | str):
         self.path = str(path)
-        self._local = threading.local()
+        self._database = Database(path)
         self._init_lock = threading.Lock()
         self._initialized = False
         self.init_db()
 
     # ---- connection handling ------------------------------------------- #
-    def _conn(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = sqlite3.connect(self.path, timeout=15)
-            conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            self._local.conn = conn
-        return conn
+    def _conn(self):
+        return self._database
 
     def init_db(self) -> None:
         with self._init_lock:
             if self._initialized:
                 return
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
             conn = self._conn()
+            if not conn.postgres:
+                conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)
             conn.commit()
             self._initialized = True
@@ -61,6 +61,7 @@ class ProjectStore:
         conn = self._conn()
         with conn:
             conn.execute("BEGIN IMMEDIATE")
+            conn.lock_project(project["id"])
             existing = conn.execute("SELECT data FROM projects WHERE id=?", (project["id"],)).fetchone()
             if existing:
                 actual = int(json.loads(existing["data"]).get("_revision", 0))
@@ -101,6 +102,7 @@ class ProjectStore:
     def delete(self, project_id: str) -> bool:
         conn = self._conn()
         with conn:
+            conn.lock_project(project_id)
             cur = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         return cur.rowcount > 0
 

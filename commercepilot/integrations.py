@@ -7,14 +7,40 @@ masked identifiers only. Credentials saved from the Settings UI go to
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from . import ai, config
+
+
+def _fingerprint(parts):
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
+
+
+def mark_verified(provider, parts, success=True):
+    from .runtime import get_store
+    db = get_store()._conn()
+    if not success:
+        db.execute("DELETE FROM integration_verifications WHERE provider=?", (provider,))
+        return
+    db.execute("INSERT INTO integration_verifications(provider,fingerprint,checked_at) VALUES (?,?,?) ON CONFLICT(provider) DO UPDATE SET fingerprint=excluded.fingerprint,checked_at=excluded.checked_at",
+               (provider, _fingerprint(parts), datetime.now(timezone.utc).isoformat()))
+
+
+def connection_status(provider, parts):
+    if not all(parts):
+        return "not_connected"
+    from .runtime import get_store
+    row = get_store()._conn().execute("SELECT fingerprint,checked_at FROM integration_verifications WHERE provider=?", (provider,)).fetchone()
+    if row and row["fingerprint"] == _fingerprint(parts) and datetime.fromisoformat(row["checked_at"]) > datetime.now(timezone.utc) - timedelta(hours=24):
+        return "connected"
+    return "configured_unverified"
 
 
 def _mask(value: str) -> str:
@@ -26,6 +52,9 @@ def _mask(value: str) -> str:
 
 
 def _saved(provider: str) -> dict:
+    if config.DATABASE_URL:
+        from .credentials import read
+        return read(provider)
     path = config.integration_secrets_path(provider)
     if path.exists():
         try:
@@ -36,6 +65,10 @@ def _saved(provider: str) -> dict:
 
 
 def save_credentials(provider: str, data: dict) -> None:
+    if config.DATABASE_URL:
+        from .credentials import save
+        save(provider, data)
+        return
     path = config.integration_secrets_path(provider)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".credentials-")
@@ -62,47 +95,48 @@ def meta_status() -> dict:
     account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
     return {
         "provider": "Meta Marketing API",
-        "status": "configured_unverified" if (token and account) else "not_connected",
+        "status": connection_status("meta", [token, account]),
         "capabilities_when_connected": [
-            "Create and update campaigns, ad sets and ads",
-            "Pull spend, impressions, clicks and conversions",
-            "Upload audiences for retargeting",
+            "Read ad account details and measured spend, clicks and impressions",
         ],
         "current_capabilities": [
             "Local campaign planning and drafts",
-            "Simulated execution labelled DEMO - NOT PUBLISHED",
+            "Read-only Meta account reporting when connected",
         ],
         "ad_account_id": _mask(account) if account else "",
         "token_configured": bool(token),
         "missing_configuration": [] if (token and account) else [
-            "META_ACCESS_TOKEN (long-lived token with ads_management)",
+            "META_ACCESS_TOKEN (token with ads_read)",
             "META_AD_ACCOUNT_ID (e.g. act_123456789)",
         ],
         "setup_instructions": [
             "Create a Meta App of type Business and add the Marketing API product.",
-            "Generate a System User token with ads_management on the ad account.",
+            "Generate a System User token with ads_read access to the ad account.",
             "Set META_ACCESS_TOKEN and META_AD_ACCOUNT_ID on the BACKEND only (.env).",
             "Verify the connection from Settings; publishing always requires explicit human approval.",
         ],
-        "note": "No campaign has ever been published to Meta from this prototype.",
+        "note": "Connect your ad account for verification and measured reporting. Campaign plans remain drafts; this workspace does not purchase ads.",
     }
 
 
 def meta_verify() -> dict:
     saved = _saved("meta")
     token = config.META_ACCESS_TOKEN or saved.get("access_token", "")
-    if not token:
-        return {"verified": False, "detail": "No access token configured."}
+    account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
+    if not token or not re.fullmatch(r"act_[0-9]+", account):
+        return {"verified": False, "detail": "Configure a token and an ad account id such as act_123456789."}
     try:
         with httpx.Client(timeout=8) as client:
             resp = client.get(
-                "https://graph.facebook.com/me",
-                params={"fields": "id,name"},
+                f"https://graph.facebook.com/{config.META_API_VERSION}/{account}",
+                params={"fields": "id,name,currency,account_status"},
                 headers={"Authorization": f"Bearer {token}"},
             )
         if resp.status_code == 200:
             data = resp.json()
-            return {"verified": True, "detail": f"Token valid for app user id {data.get('id')}."}
+            mark_verified("meta", [token, account])
+            return {"verified": True, "detail": f"Connected to {data.get('name', 'ad account')}.", "account": data}
+        mark_verified("meta", [token, account], False)
         return {"verified": False, "detail": f"Meta verification failed (HTTP {resp.status_code}). Check token permissions."}
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         return {"verified": False, "detail": f"Could not reach graph.facebook.com: {exc.__class__.__name__}"}
@@ -117,7 +151,7 @@ def shopify_status() -> dict:
     token = config.SHOPIFY_ADMIN_TOKEN or saved.get("admin_token", "")
     return {
         "provider": "Shopify Admin API",
-        "status": "configured_unverified" if (domain and token) else "not_connected",
+        "status": connection_status("shopify", [domain, token]),
         "store_domain": domain or "",
         "token_configured": bool(token),
         "capabilities_when_connected": [
@@ -136,7 +170,7 @@ def shopify_status() -> dict:
             "Grant read_products (Admin API scopes) and install the app.",
             "Set SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_TOKEN on the BACKEND only (.env).",
             "Note: a Storefront API token does NOT provide admin access.",
-            "This prototype never publishes themes or modifies the live store.",
+            "Catalog access is read-only. Imported products can be selected in your workspace.",
         ],
     }
 
@@ -155,8 +189,9 @@ def shopify_fetch_products(limit: int = 10) -> dict:
             resp = client.post(
                 f"https://{clean}/admin/api/{config.SHOPIFY_API_VERSION}/graphql.json",
                 json={"query": """query Catalog($first: Int!) {
+                    shop { currencyCode }
                     products(first: $first) { nodes {
-                        id title handle featuredImage { url }
+                        id title handle description featuredImage { url }
                         variants(first: 1) { nodes { price } }
                     } pageInfo { hasNextPage endCursor } }
                 }""", "variables": {"first": max(1, min(limit, 50))}},
@@ -168,8 +203,9 @@ def shopify_fetch_products(limit: int = 10) -> dict:
                 return {"ok": False, "detail": "Shopify rejected the catalog query. Check read_products scope."}
             catalog = payload["data"]["products"]
             rows = catalog["nodes"]
-            return {"ok": True, "count": len(rows), "page_info": catalog["pageInfo"], "products": [
-                {"title": p.get("title"), "handle": p.get("handle"),
+            mark_verified("shopify", [domain, token])
+            return {"ok": True, "currency": (payload["data"].get("shop") or {}).get("currencyCode"), "count": len(rows), "page_info": catalog["pageInfo"], "products": [
+                {"id": p.get("id"), "title": p.get("title"), "handle": p.get("handle"), "description": (p.get("description") or "")[:2000], "url": f"https://{clean}/products/{p.get('handle')}",
                  "price": ((p.get("variants") or {}).get("nodes") or [{}])[0].get("price"),
                  "image": (p.get("featuredImage") or {}).get("url")}
                 for p in rows
@@ -183,6 +219,28 @@ def shopify_fetch_products(limit: int = 10) -> dict:
         return {"ok": False, "detail": f"Could not reach the Shopify store: {exc.__class__.__name__}"}
 
 
+def meta_insights(date_preset="last_30d"):
+    saved = _saved("meta")
+    token = config.META_ACCESS_TOKEN or saved.get("access_token", "")
+    account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
+    if not token or not re.fullmatch(r"act_[0-9]+", account):
+        return {"ok": False, "detail": "Connect a Meta ad account first."}
+    try:
+        with httpx.Client(timeout=15) as client:
+            response = client.get(f"https://graph.facebook.com/{config.META_API_VERSION}/{account}/insights",
+                                  params={"fields": "account_name,account_currency,spend,clicks,impressions,date_start,date_stop", "date_preset": date_preset, "level": "account"},
+                                  headers={"Authorization": f"Bearer {token}"})
+        if response.status_code != 200:
+            mark_verified("meta", [token, account], False)
+            return {"ok": False, "detail": f"Meta reporting returned HTTP {response.status_code}. Check ads_read permission."}
+        rows = response.json()["data"]
+        mark_verified("meta", [token, account])
+        return {"ok": True, "source": "Meta Ads Insights", "date_preset": date_preset, "rows": rows,
+                "detail": "No delivery was reported for this period." if not rows else "Measured account totals; attribution to an individual product is not implied."}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return {"ok": False, "detail": "Meta reporting is unavailable. Retry or check the account configuration."}
+
+
 # --------------------------------------------------------------------------- #
 # Aggregate
 # --------------------------------------------------------------------------- #
@@ -191,13 +249,12 @@ def all_status() -> dict:
     return {
         "llm": {
             "provider": "OpenAI-compatible API",
-            "status": "configured_unverified" if ai.available() else "not_connected",
+            "status": connection_status("llm", [config.LLM_API_KEY, config.LLM_MODEL]),
             "model": config.LLM_MODEL if ai.available() else "",
             "detail": (
                 "LLM-assisted copy and intent parsing enabled."
                 if ai.available()
-                else "No OPENAI_API_KEY configured - running deterministic FALLBACK MODE "
-                "(templates + rules). Results are labelled accordingly; no LLM claims are made."
+                else "Set LLM_API_KEY and LLM_MODEL on the server to enable AI generation."
             ),
         },
         "web_search": {
@@ -207,5 +264,5 @@ def all_status() -> dict:
         },
         "meta": meta_status(),
         "shopify": shopify_status(),
-        "storage": {"provider": "SQLite", "status": "connected", "detail": "Projects persist across restarts (data/commercepilot.sqlite3)."},
+        "storage": {"provider": "PostgreSQL" if config.DATABASE_URL else "SQLite", "status": "connected", "detail": "Project history and integration verification persist in the workspace database."},
     }

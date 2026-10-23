@@ -32,7 +32,7 @@ def production(monkeypatch):
 def test_auth_and_csrf(production, store):
     client = TestClient(api.app)
     assert client.get("/api/health").status_code == 200
-    for path in ("/api/projects", "/api/integrations/status", "/docs", "/"):
+    for path in ("/api/projects", "/api/integrations/status", "/docs"):
         assert client.get(path).status_code == 401
     client.auth = (config.ADMIN_USERNAME, config.ADMIN_PASSWORD)
     assert client.get("/api/projects").status_code == 200

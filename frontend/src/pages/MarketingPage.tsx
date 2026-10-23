@@ -17,8 +17,8 @@ export function MarketingPage() {
       <PageHeader
         eyebrow="Agent C"
         title="Marketing Studio"
-        body="Campaign plans use the same stored product, audience and budget as every other agent. Performance figures are illustrative assumptions — nothing is promised and nothing is published."
-        actions={<Badge tone="red">Meta Marketing API — not connected</Badge>}
+        body="Campaign plans use the same stored product, audience and budget as every other agent. Create AI campaign copy and validate your budget. Add measured performance to evaluate results."
+        actions={<Badge tone={meta?.status === 'connected' ? 'green' : 'neutral'}>Meta: {meta?.status === 'connected' ? 'verified' : meta?.status === 'configured_unverified' ? 'verify connection' : 'not connected'}</Badge>}
       />
       {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
@@ -30,8 +30,8 @@ export function MarketingPage() {
               <p className="text-sm font-semibold text-ink">Meta integration status</p>
               <p className="mt-0.5 text-xs text-muted">
                 {meta.status === 'not_connected'
-                  ? 'This prototype plans campaigns locally. Publishing requires authorized Meta Marketing API credentials and explicit human approval.'
-                  : 'Credentials stored server-side (unverified). Publishing still requires explicit approval.'}
+                  ? 'Connect Meta in Connections & AI to verify your account and read measured performance.'
+                  : 'Your account is configured. Verify it in Connections & AI and read performance reports there.'}
               </p>
             </div>
             <a href="/settings"><Badge tone="neutral">configure in Settings →</Badge></a>
@@ -39,8 +39,8 @@ export function MarketingPage() {
         </Card>
       )}
 
-      {!project ? (
-        <EmptyState title="No project selected" body="Select or create a project to plan a campaign." />
+      {!project?.selected_product ? (
+        <EmptyState title="Select a product to plan your campaign" body="Set up your business, then select or import a product in Products." />
       ) : (
         <CampaignPlanner />
       )}
