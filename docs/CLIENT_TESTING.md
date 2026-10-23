@@ -2,13 +2,13 @@
 
 ## Deploy once, configure privately
 
-Use the current branch with the existing Vercel build/rewrite configuration. Set the real server environment values listed in `.env.example`: production mode, operator username/password, model key/provider/model, the PostgreSQL URL, credential encryption key, public HTTPS origin and allowed origin. Redeploy after changing environment values. Do not paste keys into chat or add them to frontend build variables.
+Use the current branch with the existing Vercel build/rewrite configuration. Set the real server environment values listed in `.env.example`: production mode, model key/provider/model, the PostgreSQL URL, credential encryption key, public HTTPS origin and allowed origin. Redeploy after changing environment values. Old operator username/password variables are no longer used. Do not paste keys into chat or add them to frontend build variables.
 
-The UI is publicly loadable, but every workspace API request requires sign-in. This remains one client per deployment. PostgreSQL stores projects, AI usage and verification records; saved Shopify/Meta tokens are encrypted. Integration forms are always visible, including when status retrieval fails.
+The UI and workspace API open without sign-in. Anyone who can reach the deployment shares full workspace access and can trigger provider usage. Google sign-in is not implemented yet. Keep this an isolated client-testing instance without sensitive data, or restrict access through the host/network. This remains one client per deployment. PostgreSQL stores projects, AI usage and verification records; saved Shopify/Meta tokens are encrypted. Integration forms are always visible, including when status retrieval fails.
 
 ## Acceptance steps
 
-1. Sign in. Open Add New Project, complete Business information, and save. Reload, sign in again, and confirm the saved business opens.
+1. Open the app directly without sign-in. Open Add New Project, complete Business information, and save. Reload and confirm the saved business opens without another prompt.
 2. In Product Hunter, enter a specific niche and run research. There should be one research request with your entered values. Review and select a result. Empty live results are an honest empty state, with manual entry and Shopify import available.
 3. Enter confirmed selling price and supplier cost in the selected-product economics form. Save. Missing costs stay unknown rather than invented.
 4. Generate a storefront, change a supported design setting, and export HTML. It is a design/content draft; checkout is explicitly unavailable until configured in a commerce platform.

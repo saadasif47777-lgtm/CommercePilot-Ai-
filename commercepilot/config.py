@@ -132,8 +132,6 @@ def integration_secrets_path(provider: str) -> Path:
 
 # Production is the default. Demo data requires an explicit local opt-in.
 APP_MODE = env("APP_MODE", "production")
-ADMIN_USERNAME = env("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = env("ADMIN_PASSWORD")
 SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", "2026-10")
 META_API_VERSION = env("META_API_VERSION", "v26.0")
 
@@ -147,8 +145,6 @@ def validate_runtime() -> None:
         raise RuntimeError("APP_MODE must be production or demo")
     if not production():
         return
-    if len(ADMIN_PASSWORD) < 24:
-        raise RuntimeError("Set ADMIN_PASSWORD to a random secret of at least 24 characters")
     if not LLM_API_KEY or not LLM_MODEL:
         raise RuntimeError("Production requires LLM_API_KEY and LLM_MODEL")
     if DATABASE_URL and not DATABASE_URL.startswith(("postgres://", "postgresql://")):

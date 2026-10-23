@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Read-only deployment checks; --live-model explicitly permits a small AI call."""
 import argparse
-import os
 
 import httpx
 
@@ -20,9 +19,7 @@ def main() -> int:
         health = client.get("/api/health")
         check("health", health.status_code == 200)
         check("production mode", health.json().get("mode") == "production")
-        check("unauthenticated access rejected", client.get("/api/projects").status_code == 401)
-        client.auth = (os.environ.get("ADMIN_USERNAME", "admin"), os.environ.get("ADMIN_PASSWORD", ""))
-        check("authenticated database read", client.get("/api/projects").status_code == 200)
+        check("workspace opens without sign-in", client.get("/api/projects").status_code == 200)
         check("sample catalogue disabled", client.get("/api/products").status_code == 404)
         if args.live_model:
             response = client.post("/api/integrations/llm/verify")

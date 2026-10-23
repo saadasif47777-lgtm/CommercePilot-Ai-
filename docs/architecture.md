@@ -4,7 +4,7 @@
 
 ## Production behavior
 
-Configuration defaults to production. Startup validates model/authentication settings and requires PostgreSQL on ephemeral hosts. `security.py` protects API routes with HTTP Basic authentication, rejects cross-origin browser writes and adds response security headers. Static UI assets and `/api/health` are public; the UI sign-in gates loading private workspace data. Credentials stay in browser memory. This is workspace-wide operator access, not per-user authorization.
+Configuration defaults to production. Startup validates model settings and requires PostgreSQL on ephemeral hosts. The UI and API open directly without authentication; Google sign-in and per-user authorization are future work. Every visitor shares workspace access, including data changes and paid provider actions. `security.py` still rejects cross-origin browser writes, limits declared request sizes and adds response security headers. These guards do not replace authorization; client testing needs an isolated instance or hosting/network access restrictions.
 
 Research accepts live results only in production. Legacy `both` requests are converted to live-only to preserve compatibility with the existing UI. Explicit samples, example projects and campaign simulation are rejected. Search failures return warnings and no fabricated products. Source URL hashes give listings stable identities across result ordering.
 

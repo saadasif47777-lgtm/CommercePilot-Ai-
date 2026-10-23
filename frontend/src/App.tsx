@@ -17,7 +17,6 @@ import { AnalyticsPage } from './pages/AnalyticsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { BusinessPage } from './pages/BusinessPage'
-import { AuthGate } from './components/AuthGate'
 
 // Shell = sidebar + header + animated page area + footer.
 function Shell() {
@@ -70,7 +69,7 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthGate><ProjectProvider><Shell /></ProjectProvider></AuthGate>
+      <ProjectProvider><Shell /></ProjectProvider>
     </BrowserRouter>
   )
 }

@@ -4,15 +4,15 @@
 
 One client workspace, persistent PostgreSQL (or SQLite on a local volume), and HTTPS. For a long-running server, run `uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1` after installing requirements and building the UI. `app:app` serves UI and API together. Vercel serves static UI with the existing API rewrite and requires `DATABASE_URL` for production.
 
-Set `APP_MODE=production`, a random `ADMIN_PASSWORD` with at least 24 characters, `LLM_API_KEY`, and the provider/model configuration. Set `PUBLIC_URL` and `CORS_ORIGINS` to the HTTPS origin. The app has a sign-in screen and sends HTTP Basic credentials in API headers; credentials stay in browser memory. Protect and rotate the password through your secret manager. All authenticated users are operators of the same workspace.
+Set `APP_MODE=production`, `LLM_API_KEY`, and the provider/model configuration. Set `PUBLIC_URL` and `CORS_ORIGINS` to the HTTPS origin. The app opens directly without sign-in; old `ADMIN_USERNAME` / `ADMIN_PASSWORD` values are ignored. Google sign-in is future work. Every visitor can read/change all workspace data and trigger paid provider calls. Use an isolated client-testing instance without sensitive data, or restrict reachability at the hosting/network layer. Origin checks are not user authorization.
 
-The reverse proxy must enforce HTTPS, a 1 MB request-body limit, request and login rate limits, and an upstream timeout appropriate for sequential AI steps (up to several minutes). Do not expose the upstream port directly. Do not use wildcard CORS. Supply provider spending limits because application token-price accounting is approximate.
+The reverse proxy must enforce HTTPS, a 1 MB request-body limit, request rate limits, and an upstream timeout appropriate for sequential AI steps (up to several minutes). Do not expose the upstream port directly. Do not use wildcard CORS. Supply provider spending limits because application token-price accounting is approximate.
 
 Mount `DB_PATH` and `SECRETS_DIR` on durable local storage, owned only by the service user. Avoid a shared network filesystem for SQLite WAL. One database is one client; do not share it between unrelated clients. Scale-out/multi-user hosting requires a different architecture and authorization model.
 
 ## Container
 
-The Dockerfile builds the existing frontend unchanged and starts one Python worker as a non-root user. Build with `docker build -t commercepilot .`. Mount a volume at `/data`, set `DB_PATH=/data/commercepilot.sqlite3` and `SECRETS_DIR=/data/secrets`, and supply environment secrets. Put the container behind the TLS reverse proxy described above. Container build requires access to the package registries.
+The Dockerfile builds the frontend and starts one Python worker as a non-root user. Build with `docker build -t commercepilot .`. Mount a volume at `/data`, set `DB_PATH=/data/commercepilot.sqlite3` and `SECRETS_DIR=/data/secrets`, and supply environment secrets. Put the container behind the TLS reverse proxy described above. Container build requires access to the package registries.
 
 ## Backups and rollback
 
@@ -21,11 +21,11 @@ Use Python's SQLite backup API (or SQLite `.backup`) to take a consistent databa
 ## Release checks
 
 1. Run the complete test suite and lint checks.
-2. Start against a fresh persistent volume and confirm unauthenticated API requests receive 401.
-3. Run `scripts/verify_deployment.py --base https://host` with admin credentials in environment variables. Add `--live-model` for an explicit model request; this may incur provider usage.
+2. Start against a fresh persistent volume and confirm the UI and workspace API open without a sign-in prompt, including after reloading.
+3. Run `scripts/verify_deployment.py --base https://host`. Add `--live-model` for an explicit model request; this may incur provider usage.
 4. In the application, test a real client brief and a manually entered product with verified price/cost. Generate copy, campaign, analysis and report. Confirm outputs survive restart.
 5. Verify live search and optional Shopify/Meta credentials using your own accounts. Review generated claims and confirm no demo data appears.
-6. Verify proxy rate limits, HTTPS, backup/restore and operator credential rotation.
+6. Verify proxy rate limits, HTTPS, backup/restore, integration-secret rotation and the intended hosting/network access restrictions.
 
 ## Vercel production setup
 
