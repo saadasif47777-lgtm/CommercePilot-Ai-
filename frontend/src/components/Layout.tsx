@@ -15,6 +15,7 @@ const NAV = [
   { to: '/', label: 'Overview', icon: 'M4 6h16M4 12h16M4 18h10', end: true },
   { to: '/business', label: 'Business information', icon: 'M4 21V5h16v16M8 9h8M8 13h8M8 17h4' },
   { to: '/assistant', label: 'AI Commerce Assistant', icon: 'M12 3l2.2 5.3L20 10l-5.8 1.7L12 17l-2.2-5.3L4 10l5.8-1.7z' },
+  { to: '/support', label: 'Customer Support', icon: 'M21 11a8 8 0 01-8 8H7l-4 3V11a9 9 0 0118 0zM8 11h8M8 15h5' },
   { to: '/products', label: 'Product Hunter', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zm10 2l-4.35-4.35' },
   { to: '/store', label: 'Store Architect', icon: 'M4 9l1-4h14l1 4M4 9v10h16V9M4 9h16M9 19v-6h6v6' },
   { to: '/marketing', label: 'Marketing Studio', icon: 'M3 11l18-6v14L3 13v-2zm0 0v3a2 2 0 002 2h1' },

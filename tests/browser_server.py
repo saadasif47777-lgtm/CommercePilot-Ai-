@@ -1,5 +1,7 @@
 """Local browser-test server. Test-only provider transports never leave this process."""
+import json
 import os
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,11 +20,25 @@ def main():
         from commercepilot.agents import product_hunter
         from commercepilot.ai import client as ai_client
         from commercepilot.tools.web_search import SearchOutcome, SearchResult
+        from tests.test_support import catalog, product, shop_data
 
         def model(url, headers, payload, timeout):
-            import json
             system = payload["messages"][0]["content"]
-            if "classify a single user" in system:
+            user = payload["messages"][1]["content"]
+            if "You interpret a shopper" in system:
+                conversation = json.loads(re.search(r"<untrusted_conversation>\n(.*?)\n</untrusted_conversation>", user, re.S)[1])
+                message = conversation["message"].casefold()
+                if "order" in message:
+                    data = {"intent": "handoff"}
+                else:
+                    data = {"intent": "policies", "terms": ["returns"]} if "return policy" in message else {"intent": "products", "terms": ["lamp"], "max_price": 25}
+            elif "friendly customer support assistant" in system:
+                context = json.loads(re.search(r"<untrusted_knowledge>\n(.*?)\n</untrusted_knowledge>", user, re.S)[1])
+                if context["products"]:
+                    data = {"answer": "This desk lamp fits your budget. Check the product page for current price and availability.", "product_ids": [context["products"][0]["id"]]}
+                else:
+                    data = {"answer": "Returns are accepted within 14 days for unused items. Custom items are excluded. Please read the full policy.", "source_ids": [context["sources"][0]["id"]]}
+            elif "classify a single user" in system:
                 data = {"intent": "report"}
             elif "paid-social" in system:
                 data = {"headlines": ["Thoughtful desk lighting"] * 3, "primary_texts": ["Explore our desk lamp collection."] * 3}
@@ -36,6 +52,12 @@ def main():
 
         def transport(request):
             if "myshopify.com" in request.url.host:
+                query = json.loads(request.content)
+                if "SupportShop" in query["query"]:
+                    return httpx.Response(200, json={"data": shop_data()})
+                if "SupportCatalog" in query["query"]:
+                    page = catalog([product(2)]) if query.get("variables", {}).get("after") else catalog([product()], "page-2")
+                    return httpx.Response(200, json={"data": page})
                 return httpx.Response(200, json={"data": {"shop": {"currencyCode": "PKR"}, "products": {"nodes": [{"id": "gid://shopify/Product/1", "title": "Imported lamp", "handle": "lamp", "description": "Desk lamp", "variants": {"nodes": [{"price": "2000"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": None}}}})
             if request.url.path.endswith("/insights"):
                 return httpx.Response(200, json={"data": [{"account_name": "Test account", "account_currency": "PKR", "spend": "1000", "clicks": "100", "impressions": "5000", "date_start": "2026-10-01", "date_stop": "2026-10-23"}]})

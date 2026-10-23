@@ -16,6 +16,7 @@ from .storage import ProjectStore
 
 _lock = threading.Lock()
 _store: Optional[ProjectStore] = None
+_support_lock = threading.Lock()
 
 
 def get_store() -> ProjectStore:
@@ -40,3 +41,13 @@ def reset_store() -> None:
     global _store
     with _lock:
         _store = None
+
+
+def get_support_store():
+    """Use the workspace database for customer knowledge and short-lived chats."""
+    from .support.store import SupportStore
+    workspace = get_store()
+    with _support_lock:
+        if not hasattr(workspace, "_support_store"):
+            workspace._support_store = SupportStore(workspace._conn())
+        return workspace._support_store

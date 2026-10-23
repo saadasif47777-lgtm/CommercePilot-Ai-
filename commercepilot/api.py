@@ -45,6 +45,7 @@ from .schemas import (
 )
 from .security import protect
 from .storage import ConcurrentUpdate
+from .support.routes import router as support_router
 from .workflows import commerce_workflow as wf
 
 
@@ -74,6 +75,7 @@ app.add_middleware(
 )
 
 app.middleware("http")(protect)
+app.include_router(support_router)
 
 
 @app.exception_handler(CredentialError)

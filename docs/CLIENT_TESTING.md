@@ -18,6 +18,7 @@ The UI and workspace API open without sign-in. Anyone who can reach the deployme
 8. Open Settings & Integrations. Verify the configured AI model. Connect a canonical Shopify domain with an Admin token, load the catalog, then import and select a product. Imported prices come from the server-fetched catalog; supplier costs must be entered separately.
 9. Connect a Meta ad account with ads_read permission. Verify access to that specific account, then read last-30-days account totals. These are account metrics, not automatically product-attributed results.
 10. Restart or redeploy. Confirm project history and integration settings persist; verify connections again when their 24-hour verification expires.
+11. Open Customer Support. Sync with read_products and read_legal_policies permissions, customize the assistant/contact, save FAQs and test product/policy questions. Enable chat and install the script in the Shopify theme. Confirm the actual storefront widget answers, links to real products/policies, preserves follow-ups and works on mobile. Follow [the complete setup guide](SHOPIFY_SUPPORT.md) for periodic refresh and access boundaries.
 
 ## Automated checks and boundaries
 

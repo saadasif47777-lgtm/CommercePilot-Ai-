@@ -6,6 +6,13 @@ from . import config
 
 
 async def protect(request, call_next):
+    if request.url.path.startswith("/api/support/widget/"):
+        from .support.routes import widget_cors
+        response = await widget_cors(request, call_next)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Cache-Control"] = "no-store"
+        return response
     protected = request.url.path.startswith(("/api/", "/docs", "/openapi.json", "/redoc"))
     if config.production() and protected and request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
