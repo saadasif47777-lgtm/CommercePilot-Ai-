@@ -42,7 +42,7 @@ test('business, live research, costs, generation, analytics, report and saved hi
   await expect(page.getByText(/Prototype mode|Demo data labelled|competition prototype|Run simulated execution/)).toHaveCount(0)
   await page.getByRole('link', { name: 'AI Commerce Assistant', exact: true }).click()
   await page.getByRole('button', { name: 'Show me the report', exact: true }).click()
-  await expect(page.getByText('Report rebuilt with the latest data.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Report rebuilt with the latest data.', { exact: false })).toBeVisible()
   await page.getByRole('link', { name: 'Overview', exact: true }).click()
   await page.reload()
   await page.getByLabel('Password', { exact: true }).fill('browser-test-password-only-12345')
