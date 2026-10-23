@@ -147,9 +147,7 @@ def handle(store: ProjectStore, project_id: Optional[str], message: str) -> dict
                 chosen = products[0]["id"]
             for row in products:
                 if row["id"] == chosen:
-                    project["selected_product"] = row
-                    wf._set_step(store, project, "select", "success", f"{row['title']} selected")
-                    wf._save(store, project)
+                    wf.step_select_product(store, project, chosen, False)
                     return {"intent": intent, "reply": f"Selected '{row['title']}'."}
             return {"intent": intent, "reply": "Could not match that to a product - use its number from the Product Hunter list."}
 
@@ -168,8 +166,8 @@ def handle(store: ProjectStore, project_id: Optional[str], message: str) -> dict
 
         if intent == "campaign":
             brief = BusinessBrief(**project["brief"])
-            plan = wf.step_generate_campaign(store, project, CampaignRequest(objective="sales", budget=brief.budget or 30000))
-            return {"intent": intent, "reply": f"Drafted a {plan.objective} campaign with {len(plan.creatives)} creatives and {len(plan.allocations)} budget lines (DEMO - not published)."}
+            plan = wf.step_generate_campaign(store, project, CampaignRequest(objective="sales", budget=brief.budget))
+            return {"intent": intent, "reply": f"Drafted a {plan.objective} campaign with {len(plan.creatives)} creatives and {len(plan.allocations)} budget lines. The plan is saved for review and has not been published."}
 
         if intent == "analyze":
             analysis = wf.step_analyze(store, project, AnalyzeRequest())
