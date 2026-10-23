@@ -54,18 +54,26 @@ Run the checks with `pip install -r requirements-dev.txt && pytest -q`, then
 1. Push the repository to GitHub.
 2. Vercel → **Add New…** → **Project** → import the repository.
 3. Keep the defaults; [`vercel.json`](vercel.json) and
-   [`package.json`](package.json) already define the build.
+   [`package.json`](package.json) already declare the build command, the output
+   directory and the Python version, so no Build & Development Settings are
+   needed.
 4. Add optional environment variables (§3), then **Deploy**.
 
 | Setting | Value |
 |---|---|
 | Framework preset | *Other* |
 | Root directory | repository root |
-| Build command | `npm run build` |
-| Output directory | `public` |
+| Build command | `npm run build` (set in `vercel.json`) |
+| Output directory | `public` (set in `vercel.json`) |
 | Install command | default (`npm install`) |
+| Python version | `3.12` (pinned by [`.python-version`](.python-version)) |
 | Serverless function | `api/index.py` (FastAPI) |
 | Rewrites | `/api/(.*)` → `api/index.py`, everything else → `index.html` |
+
+The build command runs inside `vercel.json` rather than the dashboard because
+the `Other` preset does not infer `npm run build` on its own, and `public/` is
+ignored by git — without an explicit build command the output directory would
+never be created.
 
 `api/index.py` sets `DB_PATH=/tmp/commercepilot.sqlite3` because `/tmp` is the
 only writable directory in a function. The Python dependencies come from
