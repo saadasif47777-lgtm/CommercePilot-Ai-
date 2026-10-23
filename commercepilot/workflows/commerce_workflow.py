@@ -110,6 +110,7 @@ def update_brief(store: ProjectStore, project: dict, brief: BusinessBrief) -> di
     """
     for field in ("research", "selected_product", "store_spec", "campaign", "analysis", "report"):
         project[field] = None
+    project["analysis_inputs"] = {}
     project["brief"] = brief.model_dump()
     if brief.business_name:
         project["name"] = brief.business_name

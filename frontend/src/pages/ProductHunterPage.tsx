@@ -36,7 +36,8 @@ export function ProductHunterPage() {
   const [sellingPrice, setSellingPrice] = useState('')
   const [supplierCost, setSupplierCost] = useState('')
   useEffect(() => {
-    setSellingPrice(String(project?.selected_product?.observed_price ?? ''))
+    const matchesCurrency = !project?.selected_product?.currency || project.selected_product.currency === project.brief.currency
+    setSellingPrice(matchesCurrency ? String(project?.selected_product?.observed_price ?? '') : '')
     setSupplierCost(String(project?.selected_product?.observed_cost ?? project?.selected_product?.estimated_cost ?? ''))
   }, [project?.selected_product?.id])
 

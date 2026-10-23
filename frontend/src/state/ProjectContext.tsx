@@ -78,6 +78,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       const p = await api.getProject(id)
+      if (p.is_example || p.selected_product?.is_sample_data) {
+        setProject(null)
+        localStorage.removeItem(STORAGE_KEY)
+        setError('This saved example is not available in client mode. Create a business workspace with your own information.')
+        return
+      }
       setProject(p)
       setError(null)
       localStorage.setItem(STORAGE_KEY, id)
@@ -97,6 +103,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setProject(await api.getProject(project.id))
     } catch (err) {
       setError(errorText(err))
+      throw err
     }
   }, [project])
 
