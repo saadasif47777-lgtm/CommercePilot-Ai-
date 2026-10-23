@@ -8,7 +8,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, Field, field_validator, model_validator
+
+
+class BaseModel(PydanticBaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
 
 
 def utcnow() -> str:
@@ -41,7 +46,7 @@ class Product(BaseModel):
     title: str
     description: str = ""
     category: str = "uncategorised"
-    source: Literal["sample", "live", "merged"] = "sample"
+    source: Literal["sample", "live", "merged", "manual"] = "sample"
     source_url: Optional[str] = None
     observed_price: Optional[float] = Field(None, ge=0)
     observed_cost: Optional[float] = Field(
@@ -82,11 +87,18 @@ class ResearchRequest(BaseModel):
     price_max: Optional[float] = Field(None, ge=0)
     constraints: list[str] = Field(default_factory=list)
     categories: list[str] = Field(default_factory=list)
-    mode: Literal["sample", "live", "both"] = "both"
+    mode: Literal["sample", "live", "both"] = "live"
     limit: int = Field(12, ge=1, le=50)
     weights: Optional[dict[str, float]] = Field(
         None, description="Optional override of scoring weights."
     )
+
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.price_min is not None and self.price_max is not None and self.price_min > self.price_max:
+            raise ValueError("price_max must be >= price_min")
+        return self
 
 
 class ResearchResult(BaseModel):
@@ -447,7 +459,7 @@ class WorkflowRequest(BaseModel):
         description="When no product is selected yet, automatically select the top-ranked product "
         "(needed for the one-click demo run).",
     )
-    mode: Literal["sample", "live", "both"] = "both"
+    mode: Literal["sample", "live", "both"] = "live"
     force: bool = Field(False, description="Re-run steps that already succeeded.")
 
 

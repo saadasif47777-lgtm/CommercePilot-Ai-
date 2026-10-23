@@ -1,164 +1,23 @@
-# CommercePilot AI — Architecture
+# Architecture
 
-## Overview
+`app.py` mounts the existing React build alongside `commercepilot.api`. HTTP routes validate inputs and invoke `workflows/commerce_workflow.py`; the orchestrator coordinates Product Hunter, Store Architect, Marketing Strategist and Business Analyst. Financial arithmetic lives in `tools/calculations.py` and never uses model output.
 
-```
-                    ┌──────────────────────────────────────────┐
-                    │   backend.main (one ASGI process)        │
-                    │                                          │
-   Browser  ───────►│  React+TS SPA  (frontend/, served at /)  │
-                    │  JSON API      (backend/main.py, /api)   │
-                    └───────────────┬──────────────────────────┘
-                                    │  same functions, no HTTP hop
-                                    ▼
-                Orchestrator  commercepilot/workflows/commerce_workflow.py
-                    ├── Agent A  product_hunter.py    → ranked candidates
-                    ├── Agent B  store_architect.py   → WebsiteSpec (+ edits)
-                    ├── Agent C  marketing_agent.py   → CampaignPlan
-                    └── Agent D  business_analyst.py  → analysis dict
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        ▼                           ▼                           ▼
-tools/calculations.py        tools/web_search.py          ai/ (optional)
-pure validated arithmetic    Serper or key-free ddgs      client, schemas,
-                                                          guard, usage, budget
-                                    │
-                                    ▼
-                        storage.py — SQLite project documents
-```
+## Production behavior
 
-Layer rules:
+Configuration defaults to production. Startup validates required model/authentication settings and rejects ephemeral Vercel/temporary storage. `security.py` protects the application with HTTP Basic authentication, rejects cross-origin browser writes and adds response security headers. `/api/health` is public and reveals no project count or secrets. This is workspace-wide operator access, not per-user authorization.
 
-1. `frontend/` (React + TypeScript) and `backend/main.py` contain **no
-   business rules**; they validate input, call the orchestrator and render the
-   result.
-2. `backend/workflows/` owns sequencing, step status, invalidation and reports.
-3. `backend/agents/` own domain logic and call `tools/` and `ai/` only.
-4. `backend/tools/` is deterministic and fully unit-tested; money never goes
-   through a language model.
+Research accepts live results only in production. Legacy `both` requests are converted to live-only to preserve compatibility with the existing UI. Explicit samples, example projects and campaign simulation are rejected. Search failures return warnings and no fabricated products. Source URL hashes give listings stable identities across result ordering.
 
-## Shared project context
+Model calls use OpenAI-compatible JSON requests, bounded retries and schema validation with one repair attempt. Production rejects missing keys, invalid/incomplete responses and provider failures. Copy generation is labeled `llm` only after validated output. Demo mode explicitly permits template fallbacks. Storefront production drafts omit fabricated reviews and hard-coded shipping/benefit/FAQ claims.
 
-Each project is one JSON document (validated by Pydantic on write and read):
+## Data and workflow
 
-```
-brief, research, selected_product, saved_products, rejected_product_ids,
-store_spec, campaign, analysis, report, executions, steps
-```
+Each project is a JSON document in SQLite. Writes use `BEGIN IMMEDIATE` and compare document revisions. A stale write fails with HTTP 409 instead of overwriting another request. WAL enables readers during writes. Client deployments use one persistent local volume and one worker. Editing a brief or selecting a new product clears derived artifacts; manual products preserve user-supplied zero costs and provenance. Execution records finish with an outcome.
 
-The Product Hunter's ranking becomes the Store Architect's hero product and the
-Business Analyst's economics. The campaign's budget is what the analyst spends
-against. This shared document is what prevents "four disconnected chatbots".
+Analysis distinguishes missing measurements, user-entered actuals, and explicitly supplied scenario assumptions. Production never inserts default illustrative CPC or conversion scenarios. Campaigns remain drafts. Standalone HTML exports are schema-validated, escape text and restrict link schemes; they do not contain checkout functionality.
 
-Step states follow `brief → research → select → store → campaign → analyze →
-report`. Each step records status, message and timestamp, and can be retried
-without discarding earlier results. Editing the brief deliberately resets the
-dependent steps so stale results never look current.
+## Integrations and limits
 
-## AI layer
+Shopify reads a bounded GraphQL product page with `read_products`, pinned via `SHOPIFY_API_VERSION`. Only canonical myshopify.com domains are accepted before credentials are sent. Credential files are replaced atomically with owner-only permissions. Meta verifies access but does not buy ads. Configured credentials are reported as unverified until an actual verification request is made.
 
-`commercepilot/ai/` is the only place that talks to a model provider.
-
-| Module | Responsibility |
-|---|---|
-| `client.py` | OpenAI-compatible transport, retries with exponential backoff and jitter, 20 s timeout, output-token cap, one schema-repair retry, budget guard, usage recording |
-| `schemas.py` | Pydantic models the model's JSON must satisfy (`StoreCopy`, `CampaignCreatives`, `AssistantIntent`) |
-| `guard.py` | wraps untrusted text in explicit delimiters, strips control characters, truncates |
-| `prompts.py` + `prompts/*.v1.txt` | prompt text as versioned files; the version is recorded with every call |
-| `usage.py` | SQLite `ai_usage` table: prompt name, model, tokens, estimated cost, latency, status — never prompt contents |
-
-**Model routing.** `LLM_MODEL` (cheap) serves every task. `LLM_MODEL_STRONG` is
-optional and used only for storefront and ad copy. Blank means the cheap model
-does everything — the default, lowest-cost configuration.
-
-**Budget guard.** The monthly cap is checked *before* the provider is called.
-At the cap, calls raise `AIBudgetExceeded` and callers keep their deterministic
-templates, labelled `generation_mode: "template"`. Warning threshold is
-configurable (default 80%).
-
-**Failure behaviour.** Provider outage, invalid output twice, or budget
-exhaustion all end the same way: a labelled template result, never invented
-data or a false "AI-generated" label.
-
-## Agent contracts
-
-### Agent A — Product Hunter
-`run(ResearchRequest) -> ResearchResult`
-* modes: `sample` (16 labelled products), `live` (web search, source URLs kept),
-  `both` (merged and de-duplicated).
-* scoring: weighted heuristic (margin, demand, competition, audience, price).
-  Unknown factors are excluded and the remaining weights renormalised;
-  `score = evidence_score × evidence_coverage` so thin evidence cannot outrank
-  fully evidenced candidates.
-* never raises: provider problems become warnings in the result.
-
-### Agent B — Store Architect
-`build_spec(brief, product, design?, extra?, catalog?) -> WebsiteSpec`
-`apply_edit(spec, prompt) -> StoreEditResponse`
-* the specification is a discriminated union of eight section types plus design
-  tokens (colours, fonts, radius, density, hero/card style).
-* `store_export.render_standalone_html(spec)` turns it into a real page; the UI
-  previews that exact page and offers it as a download.
-* plain-English edits are deterministic rules that mutate the spec and report
-  what changed; unmatched prompts say so instead of pretending.
-
-### Agent C — Marketing Strategist
-`generate(brief, product, CampaignRequest) -> CampaignPlan`
-* default allocation by objective; custom allocations validated to sum exactly
-  to the budget, with no negative amounts or duplicate labels.
-* all estimates flagged illustrative; status stays `draft` with
-  `publication: "DEMO - NOT PUBLISHED"` and `meta_connection: "not_connected"`.
-* `step_simulate_campaign` applies two stated assumptions (CPC, conversion rate)
-  to the allocation — arithmetic on assumptions, labelled as such.
-
-### Agent D — Business Analyst
-`analyze(brief, product, campaign?, AnalyzeRequest) -> dict`
-* gross profit/unit, margin %, markup %, break-even ROAS, contribution margin
-  with per-unit overheads, break-even units, CPA, conversion rate, budget
-  utilisation, three editable scenarios.
-* invalid money is rejected; zero denominators return `None` with an
-  explanation; missing KPIs report `no data` rather than an estimate.
-
-## Interface layer
-
-```
-frontend/src/state/      ProjectContext — shared project state
-frontend/src/services/   typed API client (api.ts)
-frontend/src/pages/      one route per step of the workflow
-frontend/src/components/ ui kit, charts, cards, workflow panel, preview
-```
-
-Selecting a project refreshes every view from stored data, so the same project
-looks identical whichever page you open. The client talks to the same JSON
-endpoints the tests exercise, so the typed contracts are checked on both sides.
-
-## Persistence
-
-SQLite (`data/commercepilot.sqlite3` by default), WAL mode, per-thread
-connections, one `projects` table holding JSON documents plus an `ai_usage`
-table (backend/storage.py). Projects survive restarts. When `DB_PATH` points at
-a persistent disk the projects outlive deployments; otherwise the database
-resets with the instance. Postgres remains the migration path for
-multi-instance hosting.
-
-## Security
-
-* Secrets are read from environment variables via backend/config.py (never
-  committed).
-* Credentials are never returned to the browser: status responses contain
-  booleans and a masked identifier only.
-* The AI API key is server-side only; the UI never receives it.
-* Every request body is validated by Pydantic; invalid input produces a
-  field-level message, not a stack trace.
-* Model output is validated and sanitised before rendering; user text is wrapped
-  as untrusted data for prompts.
-* The app is currently single-tenant. Authentication and per-user isolation are
-  the next phase, not an existing feature.
-
-## Why plain Python instead of an agent framework
-
-Verified in this runtime before building: with no model credentials, Agno's
-`Agent.run()` returns an errored `RunOutput` with empty content, so agents built
-on it cannot produce results. Plain typed functions with explicit handoffs are
-also easier to test, trace and present — each step is an ordinary function with
-one input contract and one output contract.
+Usage records contain model/prompt identifiers and token counts, not prompt contents. The monthly threshold uses estimated prices and is not a hard billing cap. Provider limits are the authoritative billing control. Production release requires live credential tests, backup/restore verification, TLS and proxy rate/body limits; see DEPLOYMENT.md.

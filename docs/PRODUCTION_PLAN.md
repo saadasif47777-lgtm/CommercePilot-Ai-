@@ -3,7 +3,7 @@
 > **Historical document.** This is the audit written before the production
 > phases started, kept as a record of what the project looked like and why each
 > decision was made. It describes the previous stack (React/TypeScript on
-> Vercel). The current application is Python-only — Gradio UI + FastAPI + SQLite
+> Vercel). The current application uses React with FastAPI + SQLite
 > in one process — see [README](../README.md) and
 > [architecture](architecture.md) for the actual implementation. Section 11
 > (cost policy and free-tier limits) is still current.

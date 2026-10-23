@@ -1,3 +1,5 @@
+> Historical demo documentation. For current production behavior and release checks, see [DEPLOYMENT.md](../DEPLOYMENT.md).
+
 # CommercePilot AI — Competition Proposal
 
 **Category:** AI in Retail & E-commerce

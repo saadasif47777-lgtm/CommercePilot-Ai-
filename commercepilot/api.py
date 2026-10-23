@@ -11,11 +11,12 @@ All routes live under ``/api`` so the built frontend can be served from ``/``
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 
 from . import ai, config, integrations
@@ -36,13 +37,24 @@ from .schemas import (
     ResearchRequest,
     ResearchResult,
     ShopifyCredentials,
-    StoreDesign,
     StoreEditRequest,
+    StoreGenerateRequest,
     WorkflowRequest,
 )
+from .security import protect
+from .storage import ConcurrentUpdate
 from .workflows import commerce_workflow as wf
 
+
+@asynccontextmanager
+async def lifespan(app):
+    config.validate_runtime()
+    _store().init_db()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="CommercePilot AI API",
     version="1.0.0",
     description=(
@@ -58,6 +70,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(protect)
+
+
+@app.exception_handler(ConcurrentUpdate)
+async def conflict_handler(request, exc):
+    return JSONResponse({"detail": "Project changed during this request. Reload and retry."}, status_code=409)
+
+
+@app.exception_handler(wf.StepFailed)
+async def step_handler(request, exc):
+    return JSONResponse({"detail": {"step": exc.step, "message": exc.message}}, status_code=422)
+
+
+@app.exception_handler(ai.AIError)
+async def ai_handler(request, exc):
+    return JSONResponse({"detail": str(exc)}, status_code=503)
+
 
 def _store():
     """The active project store.
@@ -96,13 +126,15 @@ def health() -> dict:
         "service": "commercepilot-ai",
         "version": "1.0.0",
         "llm_mode": ai.mode(),
-        "projects": _store().count(),
+        "mode": config.APP_MODE,
     }
 
 
 @app.get("/api/products")
 def list_products(category: Optional[str] = None) -> dict:
     """Local sample catalog (DEMO DATA - clearly labelled in each record)."""
+    if config.production():
+        raise HTTPException(404, "Sample catalogue is disabled in production")
     rows = product_hunter.load_sample_products()
     if category:
         rows = [p for p in rows if p.category.lower() == category.lower()]
@@ -122,7 +154,7 @@ def research(request: ResearchRequest) -> ResearchResult:
     try:
         return product_hunter.run(request)
     except Exception as exc:  # agent never should, but surface a real error if it does
-        raise HTTPException(status_code=502, detail=f"Research failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Research failed. Check provider configuration and retry.") from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -185,11 +217,14 @@ def select_product(project_id: str, payload: dict = Body(...)) -> dict:
         if product_id:
             wf.step_select_product(_store(), project, product_id, auto_select=True)
         elif product_payload:
-            wf.step_select_product(_store(), project, None, auto_select=True)
-            project = _project_or_404(project_id)
-            from .schemas import Product
-
-            project["selected_product"] = Product(**product_payload).model_dump()
+            try:
+                product = Product(**product_payload)
+            except ValidationError as exc:
+                raise HTTPException(422, "Invalid product payload") from exc
+            if config.production() and product.is_sample_data:
+                raise HTTPException(422, "Sample products are disabled in production")
+            wf.invalidate_outputs(project)
+            project["selected_product"] = product.model_dump()
             wf._set_step(_store(), project, "select", "success", f"{product_payload.get('title')} selected")
             wf._save(_store(), project)
         else:
@@ -203,6 +238,7 @@ def select_product(project_id: str, payload: dict = Body(...)) -> dict:
 def reset_product(project_id: str) -> dict:
     project = _project_or_404(project_id)
     project["selected_product"] = None
+    wf.invalidate_outputs(project)
     for step_id in ("select", "store", "campaign", "analyze", "report"):
         wf._set_step(_store(), project, step_id, "pending", "Product reset")
     return wf._save(_store(), project)
@@ -272,13 +308,9 @@ def manual_compare(payload: ManualProductInput) -> dict:
 # Store Architect (Agent B)
 # --------------------------------------------------------------------------- #
 @app.post("/api/projects/{project_id}/generate-store")
-def generate_store(project_id: str, payload: Optional[dict] = Body(default=None)) -> dict:
-    payload = payload or {}
-    try:
-        design = StoreDesign(**payload["design"]) if payload.get("design") else None
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid design config: {exc.errors()[0].get('msg')}") from exc
-    _run_step(project_id, wf.step_generate_store, design, payload.get("extra_instructions", ""))
+def generate_store(project_id: str, payload: Optional[StoreGenerateRequest] = None) -> dict:
+    payload = payload or StoreGenerateRequest()
+    _run_step(project_id, wf.step_generate_store, payload.design, payload.extra_instructions)
     return _project_or_404(project_id)["store_spec"]
 
 
@@ -335,12 +367,12 @@ def update_campaign(project_id: str, payload: CampaignDraftUpdate) -> dict:
         data["budget"] = payload.budget
     if payload.status is not None:
         data["status"] = payload.status
-    if payload.allocations is not None:
+    if payload.allocations is not None or payload.budget is not None:
         from .tools import calculations as calc
 
         try:
             validated = calc.validate_allocation(
-                data["budget"], [a.model_dump() for a in payload.allocations]
+                data["budget"], [a.model_dump() for a in payload.allocations] if payload.allocations is not None else data["allocations"]
             )
         except calc.CalculationError as exc:
             raise HTTPException(status_code=422, detail=f"Invalid budget allocation: {exc}") from exc
@@ -349,6 +381,11 @@ def update_campaign(project_id: str, payload: CampaignDraftUpdate) -> dict:
             for a in validated["allocations"]
         ]
         data["allocation_valid"] = True
+    if config.production() and data["status"] != "draft":
+        raise HTTPException(422, "Simulated status is disabled in production")
+    project["analysis"] = project["report"] = None
+    for step in ("analyze", "report"):
+        wf._set_step(_store(), project, step, "pending", "Campaign changed")
     project["campaign"] = data
     wf._save(_store(), project)
     return data
@@ -397,6 +434,7 @@ def get_report(project_id: str, refresh: bool = Query(False)) -> dict:
 
 @app.post("/api/projects/{project_id}/assistant")
 def assistant(project_id: str, payload: dict = Body(...)) -> dict:
+    _project_or_404(project_id)
     message = str(payload.get("message", "")).strip()
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
@@ -441,3 +479,14 @@ def save_shopify_credentials(payload: ShopifyCredentials) -> dict:
 @app.post("/api/integrations/shopify/sync")
 def shopify_sync(limit: int = Query(10, ge=1, le=50)) -> dict:
     return integrations.shopify_fetch_products(limit)
+
+
+@app.post("/api/integrations/llm/verify")
+def verify_model() -> dict:
+    """Explicit, potentially billable probe using the configured model."""
+    from .ai.schemas import AssistantIntent
+
+    result = ai.complete_json(prompt_name="intent", user="show me the project report", schema=AssistantIntent)
+    if result is None:
+        raise HTTPException(503, "Model provider is not configured")
+    return {"verified": True, "model": config.LLM_MODEL}

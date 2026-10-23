@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
+import re
+import tempfile
 
 import httpx
 
@@ -35,7 +38,16 @@ def _saved(provider: str) -> dict:
 def save_credentials(provider: str, data: dict) -> None:
     path = config.integration_secrets_path(provider)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data), encoding="utf-8")
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".credentials-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
     # Best-effort owner-only permissions (some filesystems do not support it).
     with contextlib.suppress(OSError):
         path.chmod(0o600)
@@ -85,14 +97,14 @@ def meta_verify() -> dict:
         with httpx.Client(timeout=8) as client:
             resp = client.get(
                 "https://graph.facebook.com/me",
-                params={"fields": "id,name", "access_token": token},
+                params={"fields": "id,name"},
+                headers={"Authorization": f"Bearer {token}"},
             )
         if resp.status_code == 200:
             data = resp.json()
             return {"verified": True, "detail": f"Token valid for app user id {data.get('id')}."}
-        err = resp.json().get("error", {}) if resp.headers.get("content-type", "").startswith("application/json") else {}
-        return {"verified": False, "detail": err.get("message", f"HTTP {resp.status_code}")}
-    except httpx.HTTPError as exc:
+        return {"verified": False, "detail": f"Meta verification failed (HTTP {resp.status_code}). Check token permissions."}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         return {"verified": False, "detail": f"Could not reach graph.facebook.com: {exc.__class__.__name__}"}
 
 
@@ -136,21 +148,30 @@ def shopify_fetch_products(limit: int = 10) -> dict:
     if not domain or not token:
         return {"ok": False, "detail": "Shopify is not configured (domain or token missing)."}
     clean = domain.replace("https://", "").replace("http://", "").strip("/")
-    if "." not in clean or "/" in clean:
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com", clean):
         return {"ok": False, "detail": "Invalid store domain format - expected e.g. your-store.myshopify.com"}
     try:
         with httpx.Client(timeout=10) as client:
-            resp = client.get(
-                f"https://{clean}/admin/api/2024-10/products.json",
-                params={"limit": max(1, min(limit, 50))},
+            resp = client.post(
+                f"https://{clean}/admin/api/{config.SHOPIFY_API_VERSION}/graphql.json",
+                json={"query": """query Catalog($first: Int!) {
+                    products(first: $first) { nodes {
+                        id title handle featuredImage { url }
+                        variants(first: 1) { nodes { price } }
+                    } pageInfo { hasNextPage endCursor } }
+                }""", "variables": {"first": max(1, min(limit, 50))}},
                 headers={"X-Shopify-Access-Token": token},
             )
         if resp.status_code == 200:
-            rows = resp.json().get("products", [])
-            return {"ok": True, "count": len(rows), "products": [
+            payload = resp.json()
+            if payload.get("errors") or not isinstance(payload.get("data"), dict):
+                return {"ok": False, "detail": "Shopify rejected the catalog query. Check read_products scope."}
+            catalog = payload["data"]["products"]
+            rows = catalog["nodes"]
+            return {"ok": True, "count": len(rows), "page_info": catalog["pageInfo"], "products": [
                 {"title": p.get("title"), "handle": p.get("handle"),
-                 "price": (p.get("variants") or [{}])[0].get("price"),
-                 "image": ((p.get("images") or [{}])[0]).get("src")}
+                 "price": ((p.get("variants") or {}).get("nodes") or [{}])[0].get("price"),
+                 "image": (p.get("featuredImage") or {}).get("url")}
                 for p in rows
             ]}
         if resp.status_code == 401:
@@ -158,7 +179,7 @@ def shopify_fetch_products(limit: int = 10) -> dict:
         if resp.status_code == 404:
             return {"ok": False, "detail": "Shop domain not found (404). Check SHOPIFY_SHOP_DOMAIN."}
         return {"ok": False, "detail": f"Shopify returned HTTP {resp.status_code}."}
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         return {"ok": False, "detail": f"Could not reach the Shopify store: {exc.__class__.__name__}"}
 
 
@@ -170,7 +191,7 @@ def all_status() -> dict:
     return {
         "llm": {
             "provider": "OpenAI-compatible API",
-            "status": "connected" if ai.available() else "not_connected",
+            "status": "configured_unverified" if ai.available() else "not_connected",
             "model": config.LLM_MODEL if ai.available() else "",
             "detail": (
                 "LLM-assisted copy and intent parsing enabled."
@@ -181,7 +202,7 @@ def all_status() -> dict:
         },
         "web_search": {
             "provider": search_provider,
-            "status": "connected",
+            "status": "configured_unverified",
             "detail": "Live web search for Product Hunter Mode A, with source URLs attached.",
         },
         "meta": meta_status(),

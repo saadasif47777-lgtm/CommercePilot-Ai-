@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from .. import ai
+from .. import ai, config
 from ..ai.schemas import StoreCopy
 from ..schemas import (
     BenefitsSection,
@@ -115,8 +115,10 @@ def build_spec(
 
     brand = brief.business_name or f"{brief.niche.title()} Co."
     currency = brief.currency or product.currency or "PKR"
+    if product.currency and product.currency.upper() != currency.upper():
+        raise ValueError("Product and project currencies must match; automatic FX conversion is not supported")
 
-    copy_ = _generate_copy(brief, product, brand, personality_key)
+    copy_ = _generate_copy(brief, product, brand, personality_key, extra_instructions)
     if extra_instructions:
         copy_["extra_instructions"] = extra_instructions
 
@@ -157,6 +159,11 @@ def build_spec(
         ),
     ]
 
+    if config.production():
+        sections = [s for s in sections if s.type not in {"reviews", "benefits", "faq"}]
+        sections[0].nav = [n for n in nav if n.href not in {"#reviews", "#benefits", "#faq"}]
+        sections[-1].note = "Storefront draft. Review product claims and configure checkout before publication."
+
     return WebsiteSpec(
         brand_name=brand,
         tagline=copy_["tagline"],
@@ -167,7 +174,7 @@ def build_spec(
         product=product,
         currency=currency,
         sample_catalog=sample_catalog or [],
-        generation_mode="template",
+        generation_mode=copy_.get("generation_mode", "template"),
         edit_history=[{"at": utcnow(), "change": "Initial specification generated from business brief"}],
     )
 
@@ -175,8 +182,11 @@ def build_spec(
 # --------------------------------------------------------------------------- #
 # Copy generation (LLM when configured, deterministic templates otherwise)
 # --------------------------------------------------------------------------- #
-def _generate_copy(brief: BusinessBrief, product: Product, brand: str, personality: str) -> dict:
+def _generate_copy(brief: BusinessBrief, product: Product, brand: str, personality: str, instructions: str = "") -> dict:
     copy_out = _template_copy(brief, product, brand, personality)
+    if config.production():
+        copy_out = {k: "" for k in copy_out}
+        copy_out.update(detail_bullets=[], featured_title=product.title, detail_title="Product details", detail_description=product.description)
     try:
         result = ai.complete_json(
             prompt_name="store_copy",
@@ -189,10 +199,13 @@ def _generate_copy(brief: BusinessBrief, product: Product, brand: str, personali
                 f"Audience: {ai.wrap_untrusted('audience', brief.target_audience)}\n"
                 f"Personality: {ai.wrap_untrusted('personality', personality)}\n"
                 f"Product: {ai.wrap_untrusted('product', product.title + ' - ' + product.description)}\n"
-                "Write the storefront copy now."
+                f"Instructions: {ai.wrap_untrusted('instructions', instructions)}\n"
+                "Write the storefront copy now. Do not invent shipping, refund policies, reviews or product claims."
             ),
         )
     except ai.AIError:
+        if config.production():
+            raise
         # Budget hit, provider outage or invalid output: keep template copy and
         # leave generation_mode as "template" so the UI states the truth.
         return copy_out

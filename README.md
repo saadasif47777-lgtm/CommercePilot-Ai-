@@ -1,80 +1,66 @@
 # CommercePilot AI
 
-An AI agent crew — Product Hunter, Store Architect, Marketing Strategist and
-Business Analyst — that takes a product brief from research to a ranked product
-shortlist, a generated storefront, a campaign plan and full unit economics.
+A commerce planning workspace for product research, AI storefront copy, campaign drafts and deterministic unit economics. Python 3.12, FastAPI, SQLite, and an existing React interface.
 
-**Stack:** Python 3.12 · FastAPI · SQLite — React 19 · Vite · TypeScript ·
-Tailwind 4. One backend process serves the JSON API and the built frontend;
-there is no second service to deploy.
+**Production mode is the default.** It requires authentication and a real OpenAI-compatible model configuration. Missing keys, provider failures and invalid model output no longer silently produce template results. Production research uses live search only; sample catalogues, example projects, simulated campaign execution and generated customer reviews are disabled.
 
-## Quick start
+## Start
 
 ```bash
-# 1. Backend + frontend dependencies
-pip install -r requirements.txt
-cd frontend && npm install && cd ..
-
-# 2. Configure (optional — the app runs with no keys in labelled demo mode)
-cp .env.example .env         # edit if you have keys
-
-# 3. Build the frontend once
-npm run build                # runs `npm --prefix frontend run build
-
-# 4. Run
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python -m pip install -r requirements.txt
+cp .env.example .env
+# Set ADMIN_PASSWORD (random, at least 24 characters), LLM_API_KEY and LLM_MODEL.
+# Choose the provider/model available in your own provider account.
+npm run build
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-Open <http://localhost:8000>. API docs at <http://localhost:8000/docs>.
+Open the application and enter `ADMIN_USERNAME` / `ADMIN_PASSWORD` in the browser authentication prompt. Serve it through HTTPS before remote access. The API and UI must share an origin. API clients use HTTP Basic authentication; never embed these credentials in frontend code.
 
-For day-to-day development run the two processes side by side:
+For an explicitly local demonstration, set `APP_MODE=demo`. That disables authentication and allows sample data/template fallbacks. Never expose demo mode publicly.
 
-```bash
-uvicorn backend.main:app --reload --port 8000          # terminal 1
-npm --prefix frontend run dev                          # terminal 2 (proxies /api)
-```
+## Real client workflow
 
-## Environment variables
+1. Create a project with the client's real brief, market, currency and budget.
+2. Research with `mode: live`, or enter a real product with its observed selling price and supplier cost. Live search returns source-linked listings, not verified demand or supplier quotes.
+3. Select the product. Generate storefront copy and a campaign draft using the configured model.
+4. Review generated copy for factual accuracy. Shipping policies, testimonials and unsupported benefits are not automatically added in production.
+5. Analyze real prices and costs. Supply actual campaign measurements to compute KPIs. Scenario projections require explicit assumptions in production.
+6. Export the storefront draft and project report. Publishing, checkout and ad buying are separate operations that this backend does not implement.
 
-All read from `.env` (see `.env.example`):
+## Scope and isolation
+
+This is a **single-client workspace**, not a multi-tenant SaaS. Every authenticated operator shares all projects and integration settings. Deploy a separate instance, database, credentials and volume for each client. SQLite must be on a persistent local disk. Production startup rejects Vercel and `/tmp` databases; the existing Vercel configuration is demo-only.
+
+Shopify catalog reads use the versioned GraphQL Admin API. Set `SHOPIFY_SHOP_DOMAIN` to the canonical `*.myshopify.com` domain and use a token with `read_products`. Sync returns a bounded page and pagination metadata. Meta integration verifies token access only; it does not publish campaigns or fetch performance metrics.
+
+## Configuration
+
+See [.env.example](.env.example) for all variables. Main settings:
 
 | Variable | Purpose |
-|---|---|
-| `DB_PATH` | SQLite file (default `data/commercepilot.sqlite3`) |
-| `CORS_ORIGINS` | Comma-separated allow-list for browser origins |
-| `SERPER_API_KEY` | Live product/web search (falls back to key-free DDGS, then samples) |
-| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` / `LLM_MODEL_STRONG` | Optional OpenAI-compatible model access |
-| `LLM_MONTHLY_BUDGET` / `LLM_WARN_THRESHOLD` | Monthly spend cap and warning level |
-| `SESSION_SECRET` | Signing key for session cookies |
+| --- | --- |
+| `APP_MODE` | `production` (default) or explicitly local `demo` |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Workspace HTTP Basic credentials |
+| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | Model provider configuration |
+| `LLM_MODEL_STRONG` | Optional separate model for copy generation |
+| `AI_MONTHLY_CAP_USD`, `AI_BUDGET_WARN_PCT` | Estimated usage threshold and warning percentage |
+| `SERPER_API_KEY` | Optional paid search; otherwise key-free DDGS |
+| `DB_PATH`, `SECRETS_DIR` | Persistent database and integration credential directory |
+| `PUBLIC_URL`, `CORS_ORIGINS` | Public origin and explicit browser origin allowlist |
+| `SHOPIFY_API_VERSION` | Pinned Shopify API version; review before each version's support ends |
 
-Without model keys the app still works: copy is generated from deterministic
-templates and labelled `template`, calculations are always plain Python, and
-the Product Hunter degrades live → free search → labeled sample catalogue.
+The usage threshold is an estimate, not a billing guarantee: model prices vary, concurrent requests can overshoot, and timed-out requests may still be billed. Set provider-side spending limits too.
 
-**No secrets are ever committed.** `.env` and `data/` are git-ignored; only
-`.env.example` is tracked.
-
-## Tests
+## Validation
 
 ```bash
-pytest                  # unit + API tests (135 passing)
-pytest -m live          # live LLM integration probes (needs keys)
-ruff check backend      # lint
-python scripts/verify_deployment.py <base-url>   # post-deploy smoke checks
+python -m pip install -r requirements-dev.txt
+python -m pytest
+python -m ruff check commercepilot app.py api tests scripts
+python scripts/verify_deployment.py --base https://your-host.example
 ```
 
-## Routes
+Unit tests use an isolated demo environment and mocked provider transports. Production regression tests cover authentication, origin protection, missing keys, model failures, live-only research, stale-write rejection, manual costs and integration host validation. They do not prove that your live credentials work. The deployment probe is read-only by default; `--live-model` explicitly sends a small paid model probe.
 
-| Path | What |
-|---|---|
-| `/` | React SPA (Product Hunter → Store Architect → Marketing → Analytics → History → Settings) |
-| `/docs` | OpenAPI explorer |
-| `/api/*` | JSON API — same orchestrator functions the UI uses |
-
-## Documentation
-
-* [docs/architecture.md](docs/architecture.md) — layers, agent contracts, AI
-  routing, persistence
-* [docs/PRODUCTION_PLAN.md](docs/PRODUCTION_PLAN.md) — historical Phase 0 audit
-  of the previous Vercel stack (still explains cost policy in section 11)
-* [proposal.md](proposal.md) — original project proposal
+See [deployment](DEPLOYMENT.md), [architecture](docs/architecture.md), and [review findings and remaining release gates](docs/BACKEND_REVIEW.md). Historical proposal and production-plan documents describe earlier prototypes, not the current runtime contract.

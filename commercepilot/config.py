@@ -129,3 +129,28 @@ def integration_secrets_path(provider: str) -> Path:
     """Path of the git-ignored JSON file holding credentials for ``provider``."""
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     return SECRETS_DIR / f"{provider}.json"
+
+# Production is the default. Demo data requires an explicit local opt-in.
+APP_MODE = env("APP_MODE", "production")
+ADMIN_USERNAME = env("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = env("ADMIN_PASSWORD")
+SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", "2026-10")
+
+
+def production() -> bool:
+    return APP_MODE == "production"
+
+
+def validate_runtime() -> None:
+    if APP_MODE not in {"production", "demo"}:
+        raise RuntimeError("APP_MODE must be production or demo")
+    if not production():
+        return
+    if len(ADMIN_PASSWORD) < 24:
+        raise RuntimeError("Set ADMIN_PASSWORD to a random secret of at least 24 characters")
+    if not LLM_API_KEY or not LLM_MODEL:
+        raise RuntimeError("Production requires LLM_API_KEY and LLM_MODEL")
+    if env("VERCEL") or str(DB_PATH).startswith("/tmp/"):
+        raise RuntimeError("Production requires a persistent disk; ephemeral serverless SQLite is unsupported")
+    if "*" in CORS_ORIGINS:
+        raise RuntimeError("Production CORS_ORIGINS must contain explicit origins")

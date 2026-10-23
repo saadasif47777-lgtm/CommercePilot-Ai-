@@ -248,10 +248,11 @@ class TestIntegrations:
         body = client.get("/api/integrations/status").json()
         assert body["meta"]["status"] == "not_connected"
         assert body["shopify"]["status"] == "not_connected"
-        assert body["web_search"]["status"] == "connected"
+        assert body["web_search"]["status"] == "configured_unverified"
         assert body["meta"]["missing_configuration"]
 
-    def test_meta_credentials_never_echoed(self, client):
+    def test_meta_credentials_never_echoed(self, client, monkeypatch):
+        monkeypatch.setattr(api.integrations, "meta_verify", lambda: {"verified": False, "detail": "Rejected"})
         resp = client.post(
             "/api/integrations/meta/credentials",
             json={"access_token": "EAAGSuperSecretToken123", "ad_account_id": "act_123"},

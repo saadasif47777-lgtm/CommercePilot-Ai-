@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from . import ai
+from . import ai, config
 from .ai.schemas import AssistantIntent
 from .schemas import (
     AnalyzeRequest,
@@ -52,7 +52,7 @@ def _split_chain(message: str) -> list[str]:
 
 def _detect_intent(message: str) -> str:
     lowered = message.lower()
-    if ai.available():
+    if config.production() or ai.available():
         try:
             classified = ai.complete_json(
                 prompt_name="intent",
@@ -60,6 +60,8 @@ def _detect_intent(message: str) -> str:
                 user=ai.wrap_untrusted("message", message, limit=1000),
             )
         except ai.AIError:
+            if config.production():
+                raise
             classified = None
         if classified is not None:
             return classified.intent

@@ -12,6 +12,8 @@ Definitions (as required by the specification):
 """
 from __future__ import annotations
 
+import math
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 __all__ = [
@@ -84,7 +86,7 @@ def break_even_roas(selling_price: Any, gross_profit_per_unit_value: Any) -> Opt
     """
     price = validate_money(selling_price, "selling_price", allow_zero=False)
     profit = float(gross_profit_per_unit_value)
-    if profit != profit:
+    if not math.isfinite(profit):
         raise CalculationError("gross_profit_per_unit must be a number")
     if profit <= 0:
         return None  # undefined: no amount of ROAS makes a loss-making unit break even
@@ -148,6 +150,7 @@ def cost_per_acquisition(ad_spend: Any, acquired_customers: Any) -> Optional[flo
         return None
     if isinstance(acquired_customers, bool) or not isinstance(acquired_customers, (int, float)):
         raise CalculationError("acquired_customers must be a number")
+    validate_money(acquired_customers, "acquired_customers")
     if acquired_customers < 0:
         raise CalculationError("acquired_customers must not be negative")
     if acquired_customers == 0:
@@ -162,6 +165,7 @@ def conversion_rate(conversions: Any, clicks: Any) -> Optional[float]:
     for v, name in ((conversions, "conversions"), (clicks, "clicks")):
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             raise CalculationError(f"{name} must be a number")
+        validate_money(v, name)
         if v < 0:
             raise CalculationError(f"{name} must not be negative")
     if clicks == 0:
@@ -198,7 +202,7 @@ def scenario_projection(
     price = validate_money(selling_price, "selling_price", allow_zero=False)
     cost = validate_money(product_cost, "product_cost")
     ck = validate_money(clicks, "clicks")
-    cvr = float(conversion_rate_pct)
+    cvr = validate_money(conversion_rate_pct, "conversion_rate_pct")
     if cvr < 0 or cvr > 100:
         raise CalculationError("conversion_rate_pct must be between 0 and 100")
     cost_per_click = validate_money(cpc, "cpc")
@@ -264,18 +268,19 @@ def allocate_budget(total: Any, split: dict) -> list:
     t = validate_money(total, "campaign budget", allow_zero=False)
     if not split:
         raise CalculationError("split is empty")
-    weights = {k: float(v) for k, v in split.items()}
+    weights = {k: validate_money(v, "split weight") for k, v in split.items()}
     if any(w < 0 for w in weights.values()):
         raise CalculationError("split weights must not be negative")
     wsum = sum(weights.values())
     if wsum <= 0:
         raise CalculationError("split weights must sum to a positive number")
-    amounts = {k: round(t * w / wsum) for k, w in weights.items()}  # whole currency units
-    drift = round(t) - sum(amounts.values())
+    cents = int((Decimal(str(t)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    amounts = {k: round(cents * w / wsum) for k, w in weights.items()}
+    drift = cents - sum(amounts.values())
     if drift != 0:
         biggest = max(weights, key=lambda k: weights[k])
         amounts[biggest] += drift
-    return [{"label": k, "amount": float(amounts[k])} for k in split]
+    return [{"label": k, "amount": amounts[k] / 100} for k in split]
 
 
 def pct_of_budget(amount: Any, budget: Any) -> float:

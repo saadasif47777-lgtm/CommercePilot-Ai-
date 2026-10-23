@@ -86,7 +86,7 @@ def _serper(query: str, limit: int, timeout: float) -> SearchOutcome:
             return SearchOutcome(results=results[:limit], provider="serper")
     except httpx.TimeoutException:
         return SearchOutcome(provider="serper", warning="Live search timed out.")
-    except httpx.HTTPError:
+    except (httpx.HTTPError, ValueError, TypeError, AttributeError):
         return SearchOutcome(provider="serper", warning="Live search service unreachable.")
 
 

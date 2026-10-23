@@ -1,179 +1,32 @@
-# Deploying CommercePilot AI
+# Deployment
 
-The project has two parts:
+## Supported production topology
 
-* **`frontend/`** — React + TypeScript, built by Vite into static files.
-* **`commercepilot/`** — FastAPI backend, imported by `api/index.py` for Vercel
-  or served with Uvicorn anywhere else.
+One client workspace, one ASGI worker, a persistent local volume, and a TLS reverse proxy. Run `uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1` after installing requirements and building the existing UI. `app:app` serves the built UI and JSON API from the same origin; `commercepilot.api:app` serves the API alone.
 
-```
-GitHub ──► Vercel
-             build: npm run build        → public/  (static UI)
-             function: api/index.py      → /api/*   (FastAPI)
-```
+Set `APP_MODE=production`, a random `ADMIN_PASSWORD` with at least 24 characters, `LLM_API_KEY`, and the provider/model configuration. Set `PUBLIC_URL` and `CORS_ORIGINS` to the HTTPS origin. Use HTTP Basic authentication at that origin; the browser prompts once and sends the credentials to the same-origin API. Protect and rotate the password through your secret manager. All authenticated users are operators of the same workspace.
 
-One origin serves both, so no CORS configuration or API base URL is needed in
-production.
+The reverse proxy must enforce HTTPS, a 1 MB request-body limit, request and login rate limits, and an upstream timeout appropriate for sequential AI steps (up to several minutes). Do not expose the upstream port directly. Do not use wildcard CORS. Supply provider spending limits because application token-price accounting is approximate.
 
----
+Mount `DB_PATH` and `SECRETS_DIR` on durable local storage, owned only by the service user. Avoid a shared network filesystem for SQLite WAL. One database is one client; do not share it between unrelated clients. Scale-out/multi-user hosting requires a different architecture and authorization model.
 
-## 1. Local
+## Container
 
-```bash
-python -m venv .venv
-source .venv/bin/activate           # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env                # optional: add LLM_API_KEY
+The Dockerfile builds the existing frontend unchanged and starts one Python worker as a non-root user. Build with `docker build -t commercepilot .`. Mount a volume at `/data`, set `DB_PATH=/data/commercepilot.sqlite3` and `SECRETS_DIR=/data/secrets`, and supply environment secrets. Put the container behind the TLS reverse proxy described above. Container build requires access to the package registries.
 
-# terminal 1 — API
-uvicorn commercepilot.api:app --reload --port 8000
+## Backups and rollback
 
-# terminal 2 — UI with hot reload
-cd frontend
-npm ci
-npm run dev                         # http://localhost:3000
-```
+Use Python's SQLite backup API (or SQLite `.backup`) to take a consistent database snapshot; do not copy just the main database file while WAL writes are active. Encrypt backups and restrict access: project briefs and saved integration tokens are confidential. Back up the credential directory separately. Before an upgrade, test restore on a separate instance and preserve the previous image. Restored old projects gain `_revision` on their next write. Concurrent stale writes return HTTP 409; reload and retry, rather than blindly resubmitting.
 
-Vite proxies `/api` to `http://127.0.0.1:8000` (override with `VITE_API_TARGET`),
-so the browser only talks to the exposed origin.
+## Release checks
 
-To serve the production build from FastAPI instead:
+1. Run the complete test suite and lint checks.
+2. Start against a fresh persistent volume and confirm unauthenticated API requests receive 401.
+3. Run `scripts/verify_deployment.py --base https://host` with admin credentials in environment variables. Add `--live-model` for an explicit model request; this may incur provider usage.
+4. In the application, test a real client brief and a manually entered product with verified price/cost. Generate copy, campaign, analysis and report. Confirm outputs survive restart.
+5. Verify live search and optional Shopify/Meta credentials using your own accounts. Review generated claims and confirm no demo data appears.
+6. Verify proxy rate limits, HTTPS, backup/restore and operator credential rotation.
 
-```bash
-cd frontend && npm run build && cd ..
-python app.py                       # http://localhost:8000  (UI + API)
-```
+## Unsupported production paths
 
-Run the checks with `pip install -r requirements-dev.txt && pytest -q`, then
-`cd frontend && npx tsc -b && npm run build`.
-
----
-
-## 2. Vercel (single project, free plan)
-
-1. Push the repository to GitHub.
-2. Vercel → **Add New…** → **Project** → import the repository.
-3. Keep the defaults; [`vercel.json`](vercel.json) and
-   [`package.json`](package.json) already declare the build command, the output
-   directory and the Python version, so no Build & Development Settings are
-   needed.
-4. Add optional environment variables (§3), then **Deploy**.
-
-| Setting | Value |
-|---|---|
-| Framework preset | *Other* |
-| Root directory | repository root |
-| Build command | `npm run build` (set in `vercel.json`) |
-| Output directory | `public` (set in `vercel.json`) |
-| Install command | default (`npm install`) |
-| Python version | `3.12` (pinned by [`.python-version`](.python-version)) |
-| Serverless function | `api/index.py` (FastAPI) |
-| Rewrites | `/api/(.*)` → `api/index.py`, everything else → `index.html` |
-
-The build command runs inside `vercel.json` rather than the dashboard because
-the `Other` preset does not infer `npm run build` on its own, and `public/` is
-ignored by git — without an explicit build command the output directory would
-never be created.
-
-`api/index.py` sets `DB_PATH=/tmp/commercepilot.sqlite3` because `/tmp` is the
-only writable directory in a function. The Python dependencies come from
-`requirements.txt` at the repository root.
-
-### Verify the deployment
-
-```bash
-curl https://<project>.vercel.app/api/health
-# {"status":"ok","service":"commercepilot-ai","version":"1.0.0","llm_mode":"fallback","projects":0}
-
-curl -I https://<project>.vercel.app/          # 200 text/html
-python scripts/verify_deployment.py --base https://<project>.vercel.app
-```
-
-The smoke test checks the UI page, the health endpoint, sample-data labelling,
-an example project through the full workflow, the storefront export, the
-simulated campaign label and the assistant.
-
----
-
-## 3. Environment variables
-
-Only `LLM_API_KEY` changes behaviour materially; everything else is optional and
-the app works without it.
-
-| Name | Required | Notes |
-|---|---|---|
-| `LLM_API_KEY` | no | Groq key (console.groq.com/keys). Without it: labelled templates |
-| `LLM_PROVIDER` | no | `groq` (default), `openai`, `openrouter`, `mistral`, or any compatible provider |
-| `LLM_BASE_URL` | no | Override for a self-hosted / Ollama endpoint |
-| `LLM_MODEL` | no | Cheap model for every task (default `openai/gpt-oss-20b`) |
-| `LLM_MODEL_STRONG` | no | Optional stronger model for storefront and ad copy only |
-| `AI_MONTHLY_CAP_USD` | no | Hard monthly cap, default `25`; `0` disables |
-| `AI_BUDGET_WARN_PCT` | no | Warning threshold, default `80` |
-| `SERPER_API_KEY` | no | Google-style search results; free keyless `ddgs` is the default |
-| `DB_PATH` | no | SQLite file path (see §5 for persistence) |
-| `CORS_ORIGINS` | no | Only when the UI is served from a different origin than the API |
-| `VITE_API_BASE_URL` | no | Build-time API origin for a split deployment; empty = same origin |
-| `META_*`, `SHOPIFY_*` | no | Optional; server-side only, never sent to the browser |
-
-Never commit real values. Locally they belong in `.env`; on Vercel use the
-project's Environment Variables page and redeploy after a change.
-
----
-
-## 4. Free-tier limits you should know
-
-| Limit | Effect | Mitigation |
-|---|---|---|
-| Ephemeral function filesystem | SQLite in `/tmp` resets on cold start/redeploy | Click **Explore the example project** on Overview to rebuild the demo; see §5 for persistence |
-| 60 s function duration (`maxDuration`) | A full workflow plus live search could approach it | Keep research limits modest; the UI runs steps individually too |
-| Function cold starts | First request after idle is slower | Open the URL before a demo |
-| 250 MB function bundle | Fine here: the Python dependencies are small | — |
-| Groq free tier | Rate limits, not spend | The app retries on 429, then falls back to templates with a visible label |
-
-The frontend bundle is a static asset, so it is served from Vercel's edge cache
-and is unaffected by cold starts.
-
----
-
-## 5. Persistent data / self-hosting
-
-SQLite needs a writable, persistent disk. Any host that can run a Python process
-and build the frontend (Node 20+) works:
-
-```bash
-npm ci --prefix frontend && npm run build --prefix frontend
-pip install -r requirements.txt
-python app.py                       # binds 0.0.0.0:$PORT
-```
-
-Set `DB_PATH=/data/commercepilot.sqlite3` on a mounted disk and keep the default
-health check `/api/health`. If the host cannot run Node, build `frontend/dist`
-in CI and deploy it as an artifact — `app.py` serves that directory automatically
-and falls back to `index.html` for client-side routes.
-
-Alternatively, deploy the frontend to any static host and the API separately,
-then build the UI with `VITE_API_BASE_URL=https://api.example.com` and set
-`CORS_ORIGINS` on the API to the UI origin.
-
----
-
-## 6. Troubleshooting
-
-| Symptom | Cause / fix |
-|---|---|
-| `ModuleNotFoundError: commercepilot` | The function was deployed from a subdirectory; `api/index.py` expects the repository root |
-| UI loads but every action fails | Check `/api/health`. A rewritten `/api/*` that returns HTML means the rewrite is missing |
-| Blank page on a deep link | The SPA rewrite to `index.html` is missing in `vercel.json` |
-| `llm_mode: fallback` unexpectedly | `LLM_API_KEY` is unset/blank on the platform; env vars are read at start, so redeploy after changing them |
-| `AI budget ... has been reached` | `AI_MONTHLY_CAP_USD` reached. Raise it deliberately or wait for next month; features fall back to templates |
-| Data disappeared after a deploy | Expected with `/tmp`. See §5 for a persistent disk |
-| Vite dev shows a 403 "Blocked request" | The preview hostname must be allowed; set `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` when running `npm run dev` |
-
----
-
-## 7. What is deliberately not deployed
-
-* No ad platform publishing or Shopify writes — those stay drafts.
-* No user accounts yet; the service is single-tenant.
-* No external queue, cache or cron job — nothing that would need a paid
-  component.
+The existing Vercel configuration writes SQLite to `/tmp`. It remains suitable only for an explicitly enabled demo; production startup rejects it. A static storefront export is a draft, not a functioning checkout. This release does not implement payments, inventory/order processing, ad publication, multi-tenant accounts or OAuth credential onboarding. Do not represent those as deployed capabilities.
