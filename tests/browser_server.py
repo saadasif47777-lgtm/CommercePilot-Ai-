@@ -10,7 +10,7 @@ import uvicorn
 def main():
     with TemporaryDirectory(prefix="browser-test-", dir=Path(__file__).resolve().parents[1]) as directory:
         os.environ.update(APP_MODE="production", DB_PATH=f"{directory}/test.sqlite3", SECRETS_DIR=f"{directory}/secrets",
-                          DATABASE_URL="", ADMIN_USERNAME="admin", ADMIN_PASSWORD="browser-test-password-only-12345",
+                          DATABASE_URL="",
                           LLM_API_KEY="browser-test-key-not-real", LLM_MODEL="test-model",
                           PUBLIC_URL="http://127.0.0.1:8011", CORS_ORIGINS="http://127.0.0.1:8011")
         from app import app

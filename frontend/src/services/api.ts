@@ -27,21 +27,13 @@ export class ApiError extends Error {
 // Deployed backend origin, stripped of trailing slashes. Empty string means
 // "same-origin" (development proxy).
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
-let authorization = ''
-export function setCredentials(username: string, password: string) {
-  authorization = 'Basic ' + btoa(String.fromCharCode(...new TextEncoder().encode(`${username}:${password}`)))
-}
-export function signOut() {
-  authorization = ''
-  window.dispatchEvent(new Event('workspace-signout'))
-}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { 'content-type': 'application/json', ...(authorization ? { Authorization: authorization } : {}), ...init?.headers },
+      headers: { 'content-type': 'application/json', ...init?.headers },
     })
   } catch {
     throw new ApiError(0, API_BASE
@@ -58,7 +50,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       'Set VITE_API_BASE_URL to the deployed backend origin.')
   }
   if (!res.ok) {
-    if (res.status === 401) window.dispatchEvent(new Event('workspace-signout'))
     let detail: unknown = `HTTP ${res.status}`
     try {
       const body = await res.json()
@@ -160,8 +151,8 @@ export const api = {
   importShopify: (id: string, productId: string) => post<Project>(`/api/projects/${id}/shopify/import`, { product_id: productId }),
 
   downloadStore: async (id: string, filename: string) => {
-    const response = await fetch(`${API_BASE}/api/projects/${id}/store/export`, { headers: authorization ? { Authorization: authorization } : {} })
-    if (!response.ok) throw new ApiError(response.status, 'Could not download storefront. Sign in and retry.')
+    const response = await fetch(`${API_BASE}/api/projects/${id}/store/export`)
+    if (!response.ok) throw new ApiError(response.status, 'Could not download storefront. Check the saved design and retry.')
     const url = URL.createObjectURL(await response.blob())
     const link = document.createElement('a')
     link.href = url; link.download = filename; link.click()

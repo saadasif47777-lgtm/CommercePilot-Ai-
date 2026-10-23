@@ -25,25 +25,24 @@ def store(tmp_path):
 @pytest.fixture
 def production(monkeypatch):
     monkeypatch.setattr(config, "APP_MODE", "production")
-    monkeypatch.setattr(config, "ADMIN_PASSWORD", "a-test-password-at-least-24-characters")
     monkeypatch.setattr(config, "LLM_API_KEY", "test-not-a-real-key")
 
 
-def test_auth_and_csrf(production, store):
+def test_open_client_workspace_and_csrf(production, store):
     client = TestClient(api.app)
     assert client.get("/api/health").status_code == 200
     for path in ("/api/projects", "/api/integrations/status", "/docs"):
-        assert client.get(path).status_code == 401
-    client.auth = (config.ADMIN_USERNAME, config.ADMIN_PASSWORD)
-    assert client.get("/api/projects").status_code == 200
+        assert client.get(path).status_code == 200
     assert client.post("/api/projects", json={}, headers={"origin": "https://evil.example"}).status_code == 403
+    assert client.post("/api/projects", json={}, headers={"sec-fetch-site": "cross-site"}).status_code == 403
+    assert client.post("/api/projects", content=b"x" * 1_000_001).status_code == 413
     assert client.post("/api/projects", json={"example": True}).status_code == 422
     assert client.get("/api/products").status_code == 404
 
 
 def test_startup_requires_configuration(production, monkeypatch):
-    monkeypatch.setattr(config, "ADMIN_PASSWORD", "short")
-    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+    monkeypatch.setattr(config, "LLM_API_KEY", "")
+    with pytest.raises(RuntimeError, match="LLM_API_KEY"):
         config.validate_runtime()
 
 
@@ -170,7 +169,7 @@ def test_shopify_graphql(monkeypatch):
     assert integrations.shopify_fetch_products()["products"][0]["price"] == "10.50"
 
 
-def test_authenticated_real_product_workflow(production, store, monkeypatch):
+def test_open_real_product_workflow(production, store, monkeypatch):
     def generate(**kwargs):
         if kwargs["prompt_name"] == "store_copy":
             return StoreCopy(headline="Handmade notebook", subheadline="Paper notebook", tagline="Paper shop",
@@ -178,7 +177,6 @@ def test_authenticated_real_product_workflow(production, store, monkeypatch):
         return CampaignCreatives(headlines=["Handmade notebook"] * 3, primary_texts=["Explore our paper notebook."] * 3)
     monkeypatch.setattr(store_architect.ai, "complete_json", generate)
     client = TestClient(api.app)
-    client.auth = (config.ADMIN_USERNAME, config.ADMIN_PASSWORD)
     created = client.post("/api/projects", json={"brief": {"business_name": "Paper shop", "niche": "notebooks", "budget": 1000}})
     assert created.status_code == 201
     pid = created.json()["id"]

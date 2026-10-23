@@ -2,22 +2,22 @@
 
 A commerce workspace for product research, AI storefront copy, campaign drafts and deterministic unit economics. Python 3.12, FastAPI, React, and persistent PostgreSQL or local SQLite.
 
-**Production mode is the default.** It requires authentication and a real OpenAI-compatible model configuration. Missing keys, provider failures and invalid model output no longer silently produce template results. Production research uses live search only; sample catalogues, example projects, simulated campaign execution and generated customer reviews are disabled.
+**Production mode is the default.** It requires a real OpenAI-compatible model configuration. Missing keys, provider failures and invalid model output no longer silently produce template results. Production research uses live search only; sample catalogues, example projects, simulated campaign execution and generated customer reviews are disabled.
 
 ## Start
 
 ```bash
 python -m pip install -r requirements.txt
 cp .env.example .env
-# Set ADMIN_PASSWORD (random, at least 24 characters), LLM_API_KEY and LLM_MODEL.
+# Set LLM_API_KEY and LLM_MODEL.
 # Choose the provider/model available in your own provider account.
 npm run build
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
-Open the application and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`. Credentials remain in browser memory, not localStorage. Serve it through HTTPS before remote access. The API and UI must share an origin. API clients use HTTP Basic authentication; never embed credentials in frontend code.
+Open the application directly; no username or password is required. Google sign-in is planned, not implemented. Anyone who can reach this deployment can read and change the shared workspace and trigger provider usage. Use only an isolated client-testing deployment without sensitive client data; restrict access at the hosting/network layer when needed. Serve it through HTTPS. The API and UI must share an origin.
 
-For an explicitly local demonstration, set `APP_MODE=demo`. That disables authentication and allows sample data/template fallbacks. Never expose demo mode publicly.
+For an explicitly local demonstration, set `APP_MODE=demo`. That allows sample data/template fallbacks. Never expose demo mode publicly. Removing sign-in does not enable demo mode.
 
 ## Real client workflow
 
@@ -30,7 +30,7 @@ For an explicitly local demonstration, set `APP_MODE=demo`. That disables authen
 
 ## Scope and isolation
 
-This is a **single-client workspace**, not a multi-tenant SaaS. Every authenticated operator shares all projects and integration settings. Deploy a separate instance, database and credentials for each client. Use `DATABASE_URL` for persistent PostgreSQL on Vercel; local SQLite requires a persistent disk. Production still rejects temporary SQLite on serverless hosts.
+This is a **single-client workspace**, not a multi-tenant SaaS. All visitors share all projects and integration settings; there is currently no user authorization. Deploy a separate instance, database and integration credentials for each client. Use `DATABASE_URL` for persistent PostgreSQL on Vercel; local SQLite requires a persistent disk. Production still rejects temporary SQLite on serverless hosts.
 
 Shopify uses the GraphQL Admin API: connect a canonical `*.myshopify.com` domain and a token with `read_products`, load up to 50 products, and import a product into the active workspace. Supply its supplier cost after importing. Meta verifies access to the actual ad account with `ads_read` and reads account spend, clicks and impressions. Account totals are not automatically attributed to your selected product. Neither integration publishes ads, themes or checkout.
 
@@ -38,7 +38,7 @@ On PostgreSQL deployments, `CREDENTIAL_ENCRYPTION_KEY` encrypts saved integratio
 
 ## Vercel client testing
 
-Set `APP_MODE=production`, `ADMIN_USERNAME`, a random `ADMIN_PASSWORD` of at least 24 characters, `LLM_API_KEY`, `LLM_PROVIDER`, `LLM_MODEL`, `DATABASE_URL` (including provider TLS parameters), `CREDENTIAL_ENCRYPTION_KEY`, and your real HTTPS `PUBLIC_URL` / `CORS_ORIGINS` in Vercel environment settings, then redeploy. Do not paste secrets into chat or commit them. Generate the encryption key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+Set `APP_MODE=production`, `LLM_API_KEY`, `LLM_PROVIDER`, `LLM_MODEL`, `DATABASE_URL` (including provider TLS parameters), `CREDENTIAL_ENCRYPTION_KEY`, and your real HTTPS `PUBLIC_URL` / `CORS_ORIGINS` in Vercel environment settings, then redeploy. Old `ADMIN_USERNAME` / `ADMIN_PASSWORD` variables are no longer used and can be removed. Do not paste secrets into chat or commit them. Generate the encryption key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 
 The UI runs workflow stages as separate requests to avoid combining research and multiple model calls into one serverless request. It pauses for product review before generation. Individual provider calls can still time out or reach provider limits, and surface retryable errors.
 
@@ -49,7 +49,6 @@ See [.env.example](.env.example) for all variables. Main settings:
 | Variable | Purpose |
 | --- | --- |
 | `APP_MODE` | `production` (default) or explicitly local `demo` |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Workspace HTTP Basic credentials |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | Model provider configuration |
 | `LLM_MODEL_STRONG` | Optional separate model for copy generation |
 | `AI_MONTHLY_CAP_USD`, `AI_BUDGET_WARN_PCT` | Estimated usage threshold and warning percentage |
@@ -72,7 +71,7 @@ npm --prefix frontend run build
 cd frontend && npx playwright install chromium && npm run test:e2e
 ```
 
-Unit tests use an isolated demo environment and mocked provider transports. Production regression tests cover authentication, origin protection, missing keys, model failures, live-only research, stale-write rejection, manual costs and integration host validation. They do not prove that your live credentials work. The deployment probe is read-only by default; `--live-model` explicitly sends a small paid model probe.
+Unit tests use an isolated demo environment and mocked provider transports. Production regression tests cover direct workspace access without sign-in, origin protection, missing keys, model failures, live-only research, stale-write rejection, manual costs and integration host validation. They do not prove that your live credentials work. The deployment probe is read-only by default; `--live-model` explicitly sends a small paid model probe.
 
 CI additionally runs real PostgreSQL persistence/encryption checks and Chromium browser tests through business setup, research, pricing, generation, reporting and integration forms. Browser providers are mocked only inside the dedicated test server; production uses configured live services.
 

@@ -2,9 +2,8 @@ import { test, expect } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
-  await page.getByLabel('Password', { exact: true }).fill('browser-test-password-only-12345')
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Add New Project' }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0)
 })
 
 test('business, live research, costs, generation, analytics, report and saved history', async ({ page }) => {
@@ -45,8 +44,6 @@ test('business, live research, costs, generation, analytics, report and saved hi
   await expect(page.getByText('Report rebuilt with the latest data.', { exact: false })).toBeVisible()
   await page.getByRole('link', { name: 'Overview', exact: true }).click()
   await page.reload()
-  await page.getByLabel('Password', { exact: true }).fill('browser-test-password-only-12345')
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Client Lighting', exact: true })).toBeVisible()
   expect(errors).toEqual([])
 })

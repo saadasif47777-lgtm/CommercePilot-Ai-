@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useProject } from '../state/ProjectContext'
-import { errorText, signOut } from '../services/api'
+import { errorText } from '../services/api'
 import { Badge, Button, ErrorBanner } from './ui'
 
 // Single source of truth for navigation: route, label and the SVG path drawn
@@ -192,11 +192,6 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             )}
             Add New Project
           </Button>
-
-          <div className="hidden items-center gap-1.5 rounded-full border border-line bg-mist px-3 py-1.5 md:flex">
-            <span className="dot-pulse h-1.5 w-1.5 rounded-full bg-accent" />
-            <button onClick={signOut} className="text-xs font-medium text-muted">Sign out</button>
-          </div>
         </div>
       </div>
       {/* Creation errors belong next to the action that caused them, and are
