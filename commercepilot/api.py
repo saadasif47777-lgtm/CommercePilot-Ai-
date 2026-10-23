@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from . import ai, config, integrations
 from .agents import product_hunter
 from .assistant import handle as assistant_handle
+from .credentials import CredentialError
 from .runtime import get_store
 from .schemas import (
     AnalyzeRequest,
@@ -33,6 +34,7 @@ from .schemas import (
     ManualProductInput,
     MetaCredentials,
     Product,
+    ProductEconomicsUpdate,
     ProjectCreate,
     ResearchRequest,
     ResearchResult,
@@ -72,6 +74,11 @@ app.add_middleware(
 )
 
 app.middleware("http")(protect)
+
+
+@app.exception_handler(CredentialError)
+async def credential_handler(request, exc):
+    return JSONResponse({"detail": str(exc)}, status_code=503)
 
 
 @app.exception_handler(ConcurrentUpdate)
@@ -157,6 +164,11 @@ def research(request: ResearchRequest) -> ResearchResult:
         raise HTTPException(status_code=502, detail="Research failed. Check provider configuration and retry.") from exc
 
 
+@app.post("/api/projects/{project_id}/research", response_model=ResearchResult)
+def project_research(project_id: str, request: ResearchRequest) -> ResearchResult:
+    return _run_step(project_id, wf.step_research, request)
+
+
 # --------------------------------------------------------------------------- #
 # Projects
 # --------------------------------------------------------------------------- #
@@ -206,6 +218,32 @@ def delete_project(project_id: str) -> dict:
 def update_brief(project_id: str, payload: BriefUpdate) -> dict:
     """Replace the brief (shared logic with the Projects tab)."""
     return wf.update_brief(_store(), _project_or_404(project_id), payload.brief)
+
+
+@app.post("/api/projects/{project_id}/validate-brief")
+def validate_brief(project_id: str) -> dict:
+    _run_step(project_id, wf.step_validate_brief)
+    return _project_or_404(project_id)
+
+
+@app.put("/api/projects/{project_id}/product-economics")
+def product_economics(project_id: str, payload: ProductEconomicsUpdate) -> dict:
+    project = _project_or_404(project_id)
+    product = project.get("selected_product")
+    if not product:
+        raise HTTPException(422, "Select or import a product first")
+    if payload.currency.upper() != project["brief"]["currency"]:
+        raise HTTPException(422, "Use the business currency. Automatic currency conversion is not supported.")
+    from .tools import calculations as calc
+    wf.invalidate_outputs(project)
+    product.update(payload.model_dump())
+    product.update(cost_is_estimate=False, estimated_cost=payload.observed_cost,
+                   margin_pct=calc.gross_margin_pct(payload.observed_price, payload.observed_cost),
+                   gross_profit=calc.gross_profit_per_unit(payload.observed_price, payload.observed_cost))
+    for row in [*(project.get("saved_products") or []), *((project.get("research") or {}).get("products") or [])]:
+        if row["id"] == product["id"]:
+            row.update(product)
+    return wf._save(_store(), project)
 
 
 @app.post("/api/projects/{project_id}/select-product")
@@ -295,7 +333,7 @@ def manual_compare(payload: ManualProductInput) -> dict:
     from .agents import business_analyst as analyst
 
     data = payload.model_dump()
-    preview = Product(id=f"preview-{_uuid.uuid4().hex[:8]}", source="sample", **data)
+    preview = Product(id=f"preview-{_uuid.uuid4().hex[:8]}", source="manual", is_sample_data=False, cost_is_estimate=False, **data)
     result = analyst.analyze(BusinessBrief(currency=data["currency"]), preview)
     return {
         "inputs": payload.model_dump(),
@@ -481,6 +519,27 @@ def shopify_sync(limit: int = Query(10, ge=1, le=50)) -> dict:
     return integrations.shopify_fetch_products(limit)
 
 
+@app.get("/api/integrations/meta/insights")
+def meta_insights(date_preset: str = Query("last_30d", pattern="^(last_7d|last_30d|this_month)$")) -> dict:
+    return integrations.meta_insights(date_preset)
+
+
+@app.post("/api/projects/{project_id}/shopify/import")
+def import_shopify(project_id: str, payload: dict = Body(...)) -> dict:
+    project = _project_or_404(project_id)
+    result = integrations.shopify_fetch_products(50)
+    if not result.get("ok"):
+        raise HTTPException(502, result.get("detail", "Shopify catalog unavailable"))
+    row = next((p for p in result["products"] if p["id"] == payload.get("product_id")), None)
+    if not row:
+        raise HTTPException(404, "Product not found in the first Shopify catalog page")
+    if result.get("currency") != project["brief"]["currency"]:
+        raise HTTPException(422, "Shop currency differs from the business currency. Update the business brief first.")
+    manual = ManualProductInput(title=row["title"], observed_price=row.get("price"),
+                                currency=result["currency"], source_url=row.get("url"), description=row.get("description", ""))
+    return wf.step_manual_product(_store(), project, manual)
+
+
 @app.post("/api/integrations/llm/verify")
 def verify_model() -> dict:
     """Explicit, potentially billable probe using the configured model."""
@@ -489,4 +548,5 @@ def verify_model() -> dict:
     result = ai.complete_json(prompt_name="intent", user="show me the project report", schema=AssistantIntent)
     if result is None:
         raise HTTPException(503, "Model provider is not configured")
+    integrations.mark_verified("llm", [config.LLM_API_KEY, config.LLM_MODEL])
     return {"verified": True, "model": config.LLM_MODEL}

@@ -27,13 +27,21 @@ export class ApiError extends Error {
 // Deployed backend origin, stripped of trailing slashes. Empty string means
 // "same-origin" (development proxy).
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+let authorization = ''
+export function setCredentials(username: string, password: string) {
+  authorization = 'Basic ' + btoa(String.fromCharCode(...new TextEncoder().encode(`${username}:${password}`)))
+}
+export function signOut() {
+  authorization = ''
+  window.dispatchEvent(new Event('workspace-signout'))
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      headers: { 'content-type': 'application/json' },
       ...init,
+      headers: { 'content-type': 'application/json', ...(authorization ? { Authorization: authorization } : {}), ...init?.headers },
     })
   } catch {
     throw new ApiError(0, API_BASE
@@ -42,6 +50,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const contentType = res.headers.get('content-type') || ''
   if (contentType.includes('text/html')) {
+    if (res.status >= 500) throw new ApiError(res.status, 'The backend could not start or complete this request. Check the deployment environment, database connection and server logs, then retry.')
     // An HTML response for an /api path means the base URL is wrong (the
     // frontend host answered instead of the backend).
     throw new ApiError(res.status,
@@ -49,6 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       'Set VITE_API_BASE_URL to the deployed backend origin.')
   }
   if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event('workspace-signout'))
     let detail: unknown = `HTTP ${res.status}`
     try {
       const body = await res.json()
@@ -65,7 +75,7 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
 export const api = {
-  health: () => request<{ status: string; llm_mode: string; projects: number }>('/api/health'),
+  health: () => request<{ status: string; llm_mode: string; mode: string }>('/api/health'),
 
   products: (category?: string) =>
     request<{ is_sample_data: boolean; disclaimer: string; count: number; products: Product[] }>(
@@ -73,6 +83,7 @@ export const api = {
     ),
 
   research: (req: ResearchRequest) => post<ResearchResult>('/api/research', req),
+  projectResearch: (id: string, req: ResearchRequest) => post<ResearchResult>(`/api/projects/${id}/research`, req),
 
   listProjects: () => request<{ count: number; projects: ProjectSummary[] }>('/api/projects'),
   createProject: (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) =>
@@ -80,6 +91,8 @@ export const api = {
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
   updateBrief: (id: string, brief: BusinessBrief) => post<Project>(`/api/projects/${id}/brief`, { brief }),
+  validateBrief: (id: string) => post<Project>(`/api/projects/${id}/validate-brief`),
+  updateEconomics: (id: string, payload: { observed_price: number; observed_cost: number; currency: string }) => request<Project>(`/api/projects/${id}/product-economics`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   selectProduct: (id: string, productId: string) =>
     post<Project>(`/api/projects/${id}/select-product`, { product_id: productId }),
@@ -124,6 +137,7 @@ export const api = {
       best?: ScenarioInput
       base?: ScenarioInput
       conservative?: ScenarioInput
+      overheads?: { shipping_cost_per_unit?: number; packaging_cost_per_unit?: number; transaction_fee_per_unit?: number; fixed_costs?: number }
     },
   ) => post<AnalysisResult>(`/api/projects/${id}/analyze`, payload ?? {}),
 
@@ -138,9 +152,21 @@ export const api = {
   saveMetaCredentials: (payload: { access_token: string; ad_account_id: string; app_id?: string; app_secret?: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string; status: string }>('/api/integrations/meta/credentials', payload),
   verifyMeta: () => post<{ verified: boolean; detail: string }>('/api/integrations/meta/verify'),
+  verifyModel: () => post<{ verified: boolean; model: string }>('/api/integrations/llm/verify'),
+  metaInsights: () => request<{ ok: boolean; detail: string; source?: string; rows?: { account_name: string; account_currency: string; spend: string; clicks: string; impressions: string; date_start: string; date_stop: string }[] }>('/api/integrations/meta/insights'),
   saveShopifyCredentials: (payload: { shop_domain: string; admin_token: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string }>('/api/integrations/shopify/credentials', payload),
-  shopifySync: (limit = 10) => post<{ ok: boolean; detail?: string; count?: number; products?: unknown[] }>('/api/integrations/shopify/sync'),
+  shopifySync: (limit = 10) => post<{ ok: boolean; detail?: string; count?: number; currency?: string; products?: { id: string; title: string; price: string | null; image?: string; description?: string }[] }>(`/api/integrations/shopify/sync?limit=${limit}`),
+  importShopify: (id: string, productId: string) => post<Project>(`/api/projects/${id}/shopify/import`, { product_id: productId }),
+
+  downloadStore: async (id: string, filename: string) => {
+    const response = await fetch(`${API_BASE}/api/projects/${id}/store/export`, { headers: authorization ? { Authorization: authorization } : {} })
+    if (!response.ok) throw new ApiError(response.status, 'Could not download storefront. Sign in and retry.')
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = url; link.download = filename; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  },
 
   storeExportUrl: (id: string) => `${API_BASE}/api/projects/${id}/store/export`,
 }

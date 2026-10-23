@@ -1,5 +1,7 @@
 # Backend review — 2026-10-23
 
+> This records the first backend-only review. The later client-workspace update adds frontend onboarding, always-visible integration forms, saved project research, persistent PostgreSQL, encrypted serverless credentials and read-only Meta reporting. See [CLIENT_TESTING.md](CLIENT_TESTING.md) and the current README for the active runtime and acceptance checklist. Earlier release-gate statements below describe the first PR's scope.
+
 Source baseline: `1c56c5c659f4d4855e82f6eb29505e1c791e8c77`. Frontend source is excluded from this change. Review covers Python API, agents, workflows, AI services/prompts, schemas, persistence, integrations, calculations, exports, entry points, tests, sample data references and operational documentation/configuration.
 
 ## Corrected issues

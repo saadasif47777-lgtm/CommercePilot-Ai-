@@ -22,18 +22,15 @@ export function HistoryPage() {
   const openProject = (id: string) => selectProject(id)
 
   // Same real-project flow as the top bar: blank project, then its brief.
-  const addProject = () =>
-    run('new-project', async () => {
-      await createBlankProject()
-      navigate('/settings')
-    })
+  const addProject = () => navigate('/business?new=1')
 
   // "Duplicate" creates a fresh project with a similar name; it intentionally
   // does not copy research or designs, so no stale results are carried over.
   const duplicate = (id: string) => {
     const source = projects.find((p) => p.id === id)
     run('duplicate', async () => {
-      await createProject({ name: `${source?.name ?? 'Project'} (copy)` })
+      if (!source) return
+      await createProject({ name: `${source.name} (copy)`, brief: { ...source.brief, business_name: `${source.brief.business_name} (copy)` } })
     })
   }
 
@@ -41,7 +38,7 @@ export function HistoryPage() {
     <div>
       <PageHeader
         title="Project History"
-        body="All projects persist in the local SQLite store and survive restarts. Open one to continue exactly where you left off."
+        body="Your saved projects and their results are kept in your workspace database. Open one to continue exactly where you left off."
         actions={
           <Button busy={busy === 'new-project'} onClick={addProject}>
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>

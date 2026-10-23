@@ -67,8 +67,8 @@ SECRETS_DIR = Path(env("SECRETS_DIR", str(ROOT / ".secrets"))).expanduser()
 # One SQLite file holds projects and the AI usage log. Set DB_PATH to a mounted
 # disk on a host whose filesystem is ephemeral (Render free tier, containers).
 DB_PATH = Path(env("DB_PATH", str(DATA_DIR / "commercepilot.sqlite3"))).expanduser()
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+DATABASE_URL = env("DATABASE_URL")
+CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY")
 
 # --------------------------------------------------------------------------- #
 # AI provider (server-side only)
@@ -135,6 +135,7 @@ APP_MODE = env("APP_MODE", "production")
 ADMIN_USERNAME = env("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = env("ADMIN_PASSWORD")
 SHOPIFY_API_VERSION = env("SHOPIFY_API_VERSION", "2026-10")
+META_API_VERSION = env("META_API_VERSION", "v26.0")
 
 
 def production() -> bool:
@@ -150,7 +151,9 @@ def validate_runtime() -> None:
         raise RuntimeError("Set ADMIN_PASSWORD to a random secret of at least 24 characters")
     if not LLM_API_KEY or not LLM_MODEL:
         raise RuntimeError("Production requires LLM_API_KEY and LLM_MODEL")
-    if env("VERCEL") or str(DB_PATH).startswith("/tmp/"):
+    if DATABASE_URL and not DATABASE_URL.startswith(("postgres://", "postgresql://")):
+        raise RuntimeError("DATABASE_URL must be a PostgreSQL connection URL")
+    if not DATABASE_URL and (env("VERCEL") or str(DB_PATH).startswith("/tmp/")):
         raise RuntimeError("Production requires a persistent disk; ephemeral serverless SQLite is unsupported")
     if "*" in CORS_ORIGINS:
         raise RuntimeError("Production CORS_ORIGINS must contain explicit origins")

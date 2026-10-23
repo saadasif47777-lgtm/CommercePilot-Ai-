@@ -9,7 +9,8 @@ from . import config
 
 
 async def protect(request, call_next):
-    if config.production() and request.url.path != "/api/health":
+    protected = request.url.path.startswith(("/api/", "/docs", "/openapi.json", "/redoc"))
+    if config.production() and protected and request.url.path != "/api/health":
         if len(config.ADMIN_PASSWORD) < 24:
             return JSONResponse({"detail": "Server authentication is not configured"}, status_code=503)
         username = password = ""
@@ -23,12 +24,13 @@ async def protect(request, call_next):
         valid_user = secrets.compare_digest(username.encode(), config.ADMIN_USERNAME.encode())
         valid_password = secrets.compare_digest(password.encode(), config.ADMIN_PASSWORD.encode())
         if not (valid_user and valid_password):
-            return JSONResponse({"detail": "Authentication required"}, status_code=401,
-                                headers={"WWW-Authenticate": 'Basic realm="CommercePilot", charset="UTF-8"'})
+            return JSONResponse({"detail": "Sign in to access this workspace"}, status_code=401)
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
             allowed = set(config.CORS_ORIGINS)
-            allowed.add(config.PUBLIC_URL or str(request.base_url).rstrip("/"))
+            allowed.add(str(request.base_url).rstrip("/"))
+            if config.PUBLIC_URL:
+                allowed.add(config.PUBLIC_URL)
             if origin and origin not in allowed:
                 return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
             if request.headers.get("sec-fetch-site") == "cross-site":

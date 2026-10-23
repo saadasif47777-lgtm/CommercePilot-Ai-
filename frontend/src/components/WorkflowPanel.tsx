@@ -4,6 +4,7 @@
 // orchestrator and `ExecutionTimeline` shows the audit log of every agent run.
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api, errorText } from '../services/api'
 import { useProject } from '../state/ProjectContext'
@@ -79,47 +80,67 @@ export function WorkflowSteps({ compact = false }: { compact?: boolean }) {
   )
 }
 
-export function RunWorkflowButton({ mode }: { mode?: 'sample' | 'live' | 'both' }) {
+export function RunWorkflowButton() {
   const { project, run, refreshProject, busy } = useProject()
-  const [runMode, setRunMode] = useState<'sample' | 'live' | 'both'>(mode ?? 'both')
+  const navigate = useNavigate()
+  const [message, setMessage] = useState('')
   if (!project) return null
-
-  const started = Object.values(project.steps).some((s) => s.status === 'success')
-
-  const execute = async (force: boolean) => {
-    await run('workflow', async () => {
-      await api.runWorkflow(project.id, { auto_select: true, mode: runMode, force })
+  const execute = () => run('workflow', async () => {
+    setMessage('')
+    await api.validateBrief(project.id)
+    let current = await api.getProject(project.id)
+    if (!current.selected_product) {
+      if (!current.research?.products?.length) await api.projectResearch(current.id, {
+        niche: current.brief.niche || current.brief.industry, market: current.brief.target_market,
+        audience: current.brief.target_audience, budget: current.brief.budget, mode: 'live',
+        constraints: current.brief.constraints, price_min: current.brief.preferred_price_min, price_max: current.brief.preferred_price_max,
+      })
       await refreshProject()
-    })
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={runMode} onChange={(e) => setRunMode(e.target.value as typeof runMode)} className="w-auto py-1.5 text-xs">
-        <option value="both">Live search + sample data</option>
-        <option value="live">Live search only</option>
-        <option value="sample">Sample data only (fast)</option>
-      </Select>
-      <Button busy={busy === 'workflow'} onClick={() => execute(false)}>
-        {started ? 'Continue Workflow' : 'Run Full Commerce Workflow'}
-      </Button>
-      {started && (
-        <Button variant="secondary" size="md" busy={busy === 'workflow'} onClick={() => execute(true)} title="Re-run every step with the current brief">
-          Re-run all steps
-        </Button>
-      )}
-    </div>
-  )
+      navigate('/products')
+      return
+    }
+    try {
+      if (!current.store_spec || current.steps.store.status !== 'success') {
+        setMessage('Generating storefront copy…')
+        await api.generateStore(current.id)
+      }
+      current = await api.getProject(current.id)
+      if (!current.campaign || current.steps.campaign.status !== 'success') {
+        setMessage('Preparing campaign plan…')
+        await api.generateCampaign(current.id, { budget: current.brief.budget })
+      }
+      current = await api.getProject(current.id)
+      if (!current.analysis || current.steps.analyze.status !== 'success') {
+        setMessage('Calculating economics…')
+        await api.analyze(current.id)
+      }
+      await api.report(current.id, true)
+      setMessage('Your results are ready.')
+    } finally { await refreshProject() }
+  })
+  const briefReady = project.brief.business_name.trim() && (project.brief.niche.trim() || project.brief.industry.trim()) && project.brief.budget > 0
+  return <div className="flex flex-wrap items-center gap-3">
+    <Button busy={busy === 'workflow'} disabled={!!busy} onClick={() => briefReady ? execute() : navigate('/business')}>
+      {!briefReady ? 'Complete business information' : project.selected_product ? 'Prepare remaining results' : 'Find & review products'}
+    </Button>
+    {message && <p role="status" className="text-xs text-muted">{message}</p>}
+  </div>
 }
 
 export function RetryStepButton({ stepId, label }: { stepId: string; label?: string }) {
   const { project, run, refreshProject } = useProject()
+  const navigate = useNavigate()
   if (!project) return null
 
   const retry = async () => {
     await run(`retry-${stepId}`, async () => {
       if (stepId === 'research') {
-        await api.runWorkflow(project.id, { mode: 'both', force: false })
+        navigate('/products')
+        return
+      } else if (stepId === 'brief') {
+        navigate('/business'); return
+      } else if (stepId === 'select') {
+        navigate('/products'); return
       } else if (stepId === 'store') {
         await api.generateStore(project.id)
       } else if (stepId === 'campaign') {

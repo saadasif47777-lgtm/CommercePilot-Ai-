@@ -2,9 +2,9 @@
 
 ## Supported production topology
 
-One client workspace, one ASGI worker, a persistent local volume, and a TLS reverse proxy. Run `uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1` after installing requirements and building the existing UI. `app:app` serves the built UI and JSON API from the same origin; `commercepilot.api:app` serves the API alone.
+One client workspace, persistent PostgreSQL (or SQLite on a local volume), and HTTPS. For a long-running server, run `uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1` after installing requirements and building the UI. `app:app` serves UI and API together. Vercel serves static UI with the existing API rewrite and requires `DATABASE_URL` for production.
 
-Set `APP_MODE=production`, a random `ADMIN_PASSWORD` with at least 24 characters, `LLM_API_KEY`, and the provider/model configuration. Set `PUBLIC_URL` and `CORS_ORIGINS` to the HTTPS origin. Use HTTP Basic authentication at that origin; the browser prompts once and sends the credentials to the same-origin API. Protect and rotate the password through your secret manager. All authenticated users are operators of the same workspace.
+Set `APP_MODE=production`, a random `ADMIN_PASSWORD` with at least 24 characters, `LLM_API_KEY`, and the provider/model configuration. Set `PUBLIC_URL` and `CORS_ORIGINS` to the HTTPS origin. The app has a sign-in screen and sends HTTP Basic credentials in API headers; credentials stay in browser memory. Protect and rotate the password through your secret manager. All authenticated users are operators of the same workspace.
 
 The reverse proxy must enforce HTTPS, a 1 MB request-body limit, request and login rate limits, and an upstream timeout appropriate for sequential AI steps (up to several minutes). Do not expose the upstream port directly. Do not use wildcard CORS. Supply provider spending limits because application token-price accounting is approximate.
 
@@ -27,6 +27,12 @@ Use Python's SQLite backup API (or SQLite `.backup`) to take a consistent databa
 5. Verify live search and optional Shopify/Meta credentials using your own accounts. Review generated claims and confirm no demo data appears.
 6. Verify proxy rate limits, HTTPS, backup/restore and operator credential rotation.
 
-## Unsupported production paths
+## Vercel production setup
 
-The existing Vercel configuration writes SQLite to `/tmp`. It remains suitable only for an explicitly enabled demo; production startup rejects it. A static storefront export is a draft, not a functioning checkout. This release does not implement payments, inventory/order processing, ad publication, multi-tenant accounts or OAuth credential onboarding. Do not represent those as deployed capabilities.
+Set `DATABASE_URL` to the managed PostgreSQL connection URL, with required TLS settings, before deploying. Schema creation is automatic; pooled connections and transactional revision checks apply to projects and usage. Set a stable `CREDENTIAL_ENCRYPTION_KEY` generated with Fernet for encrypted integration tokens; losing or changing that key requires reconnecting accounts. Keep the URL and encryption key in Vercel secrets. No cloud account is provisioned by this repository.
+
+The `/tmp` fallback in `api/index.py` is never used for production persistence; startup rejects it when PostgreSQL is not configured. Existing SQLite data is not migrated automatically. For an existing client database, plan and verify a separate migration before switching storage.
+
+Business setup and connection forms are available in the UI. The workflow uses separate per-stage requests and stops for product selection; provider-side limits and individual request timeouts still apply. CI exercises PostgreSQL and browser flows with test-only provider responses. Real credentials must be verified after deployment.
+
+A static storefront export is a draft, not a functioning checkout. Payments, inventory/order processing, ad publication, multi-tenant accounts and OAuth onboarding are not implemented. Meta supports read-only account reporting; Shopify supports bounded catalog reads and product import.

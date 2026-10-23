@@ -5,10 +5,10 @@ and this FastAPI app (rewritten from ``/api/*`` by ``vercel.json``). Because the
 browser talks to a single origin, no CORS configuration and no
 ``VITE_API_BASE_URL`` are needed in production.
 
-SQLite lives on ``/tmp`` — the only writable directory in a Vercel function — so
-project data is ephemeral and resets on cold starts or redeploys. That is an
-accepted trade-off of the free serverless tier: the app's "Explore the example
-project" button rebuilds the full demo state in one click.
+Production requires DATABASE_URL pointing to persistent PostgreSQL. The /tmp
+SQLite path below is used only by explicitly enabled local/demo operation;
+production startup rejects it when DATABASE_URL is missing. Integration tokens
+are encrypted in PostgreSQL using CREDENTIAL_ENCRYPTION_KEY.
 """
 
 import os

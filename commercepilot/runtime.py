@@ -24,7 +24,7 @@ def get_store() -> ProjectStore:
     if _store is None:
         with _lock:
             if _store is None:
-                _store = ProjectStore(config.DB_PATH)
+                _store = ProjectStore(config.DATABASE_URL or config.DB_PATH)
     return _store
 
 

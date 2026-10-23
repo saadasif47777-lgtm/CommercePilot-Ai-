@@ -497,7 +497,7 @@ def run(req: ResearchRequest) -> ResearchResult:
                 product.demand_signals.append(landscape)
         elif req.mode == "live":
             warnings.append(
-                "Live search returned no usable results - run again with sample data enabled."
+                "Live search returned no usable results. Try a more specific niche, check the search connection, or import your own product."
             )
 
     candidates = sample_products + live_products

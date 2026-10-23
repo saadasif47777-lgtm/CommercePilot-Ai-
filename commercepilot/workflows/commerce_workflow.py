@@ -110,6 +110,7 @@ def update_brief(store: ProjectStore, project: dict, brief: BusinessBrief) -> di
     """
     for field in ("research", "selected_product", "store_spec", "campaign", "analysis", "report"):
         project[field] = None
+    project["analysis_inputs"] = {}
     project["brief"] = brief.model_dump()
     if brief.business_name:
         project["name"] = brief.business_name
@@ -389,7 +390,7 @@ def step_manual_product(store: ProjectStore, project: dict, payload) -> dict:
     saved.append(row)
     research = project.get("research")
     if not research:
-        project["research"] = {"products": [row], "warnings": ["Manual entry - no web research was performed for this run."], "mode": "manual", "generated_at": utcnow(), "sources": []}
+        project["research"] = {"products": [row], "warnings": ["User-supplied product - no web research was performed for this entry."], "mode": "manual", "generated_at": utcnow(), "sources": [], "query": "Your products", "elapsed_ms": 0, "is_sample_data": False, "contains_live_results": False}
         research = project["research"]
     else:
         research.setdefault("products", []).append(row)
@@ -544,6 +545,10 @@ def step_simulate_campaign(store: ProjectStore, project: dict) -> dict:
 
 
 def step_analyze(store: ProjectStore, project: dict, request: Optional[AnalyzeRequest] = None) -> dict:
+    inputs = dict(project.get("analysis_inputs") or {})
+    for key, value in (request or AnalyzeRequest()).model_dump(exclude_unset=True, exclude_none=True).items():
+        inputs[key] = {**inputs.get(key, {}), **value} if isinstance(value, dict) else value
+    request = AnalyzeRequest(**inputs)
     brief = _brief_of(project)
     product = _resolve_product(project, None, True)
     campaign = CampaignPlan(**project["campaign"]) if project.get("campaign") else None
@@ -562,6 +567,7 @@ def step_analyze(store: ProjectStore, project: dict, request: Optional[AnalyzeRe
         raise StepFailed("analyze", "; ".join(analysis["errors"]))
     project["report"] = None
     project["analysis"] = analysis
+    project["analysis_inputs"] = inputs
     unit = analysis["unit_economics"]
     _set_step(
         store, project, "analyze", "success",
@@ -776,6 +782,7 @@ def build_report(project: dict) -> dict:
 
 
 def invalidate_outputs(project: dict) -> None:
+    project["analysis_inputs"] = {}
     for field in ("store_spec", "campaign", "analysis", "report"):
         project[field] = None
     for step in ("store", "campaign", "analyze", "report"):

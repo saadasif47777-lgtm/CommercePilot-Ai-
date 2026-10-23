@@ -5,7 +5,8 @@
 // manual-entry panel exists for the case where web search is unavailable; those
 // rows are labelled "manually entered" so they are never mistaken for evidence.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, errorText } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, Input, PageHeader, SectionTitle, Select, SkeletonCards, WarningList } from '../components/ui'
@@ -21,7 +22,7 @@ export function ProductHunterPage() {
   const brief = project?.brief
 
   const [niche, setNiche] = useState('')
-  const [mode, setMode] = useState<'sample' | 'live' | 'both'>('both')
+  const mode = 'live' as const
   const [priceMin, setPriceMin] = useState<string>('')
   const [priceMax, setPriceMax] = useState<string>('')
   const [constraints, setConstraints] = useState('')
@@ -32,6 +33,13 @@ export function ProductHunterPage() {
   const [localError, setLocalError] = useState<string | null>(null)
 
   const research = project?.research ?? null
+  const [sellingPrice, setSellingPrice] = useState('')
+  const [supplierCost, setSupplierCost] = useState('')
+  useEffect(() => {
+    const matchesCurrency = !project?.selected_product?.currency || project.selected_product.currency === project.brief.currency
+    setSellingPrice(matchesCurrency ? String(project?.selected_product?.observed_price ?? '') : '')
+    setSupplierCost(String(project?.selected_product?.observed_cost ?? project?.selected_product?.estimated_cost ?? ''))
+  }, [project?.selected_product?.id])
 
   // Research request: the niche falls back to the brief so one click works even
   // on a brand new project. After a successful search the project is reloaded
@@ -41,7 +49,7 @@ export function ProductHunterPage() {
       if (!project) return
       setLocalError(null)
       try {
-        await api.research({
+        await api.projectResearch(project.id, {
           niche: niche || brief?.niche || brief?.industry || 'trending products',
           market: brief?.target_market || 'Pakistan',
           audience: brief?.target_audience,
@@ -52,7 +60,6 @@ export function ProductHunterPage() {
           mode,
           limit: 12,
         })
-        await api.runWorkflow(project.id, { mode, auto_select: false }).catch(() => undefined)
         await refreshProject()
       } catch (err) {
         setLocalError(errorText(err))
@@ -63,7 +70,7 @@ export function ProductHunterPage() {
   // order is preserved as the default (highest score first).
   const filtered = useMemo(() => {
     if (!research) return [] as Product[]
-    let rows = [...research.products]
+    let rows = research.products.filter(p => !p.is_sample_data)
     if (categoryFilter) rows = rows.filter((p) => p.category === categoryFilter)
     if (sourceFilter !== 'all') rows = rows.filter((p) => (sourceFilter === 'live' ? p.source !== 'sample' : p.source === 'sample'))
     const confRank = { high: 3, medium: 2, low: 1 } as const
@@ -151,7 +158,7 @@ export function ProductHunterPage() {
         eyebrow="Agent A"
         title="Product Hunter"
         body="Ranks candidates with a transparent, configurable scoring function. Live results keep their source URLs; missing evidence is marked unknown — never invented."
-        actions={research && <Badge tone={research.contains_live_results ? 'blue' : 'amber'}>{research.contains_live_results ? 'live + sample' : 'sample data'}</Badge>}
+        actions={<Link to="/settings"><Button variant="secondary">Import from Shopify</Button></Link>}
       />
 
       {(error || localError) && <ErrorBanner message={localError ?? error ?? ''} onDismiss={() => { setLocalError(null); clearError() }} />}
@@ -164,13 +171,7 @@ export function ProductHunterPage() {
               <Input value={niche} placeholder={brief?.niche || 'e.g. vitamin c serum'} onChange={(e) => setNiche(e.target.value)} />
             </Field>
           </div>
-          <Field label="Research mode" hint="Live = real web search (DuckDuckGo)">
-            <Select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-              <option value="both">Live search + sample data</option>
-              <option value="live">Live search only</option>
-              <option value="sample">Sample data only</option>
-            </Select>
-          </Field>
+          <Field label="Research source"><Input value="Live web search" readOnly /></Field>
           <Field label={`Price ${brief?.currency ?? 'PKR'} min`}>
             <Input type="number" min={0} value={priceMin} placeholder={brief?.preferred_price_min ? String(brief.preferred_price_min) : 'any'} onChange={(e) => setPriceMin(e.target.value)} />
           </Field>
@@ -184,10 +185,10 @@ export function ProductHunterPage() {
               <Input value={constraints} placeholder="optional" onChange={(e) => setConstraints(e.target.value)} />
             </Field>
           </div>
-          <Button busy={busy === 'research'} onClick={search}>
+          <Button busy={busy === 'research'} onClick={search} disabled={!project || !!busy}>
             {research ? 'Re-run research' : 'Run Product Hunter'}
           </Button>
-          <Button variant="secondary" onClick={() => setManualOpen((o) => !o)}>
+          <Button variant="secondary" disabled={!project} onClick={() => setManualOpen((o) => !o)}>
             {manualOpen ? 'Close' : 'Enter product manually'}
           </Button>
         </div>
@@ -196,7 +197,7 @@ export function ProductHunterPage() {
             <p className="mb-3 text-xs text-muted">
               When web research is unavailable: enter the product and its economics yourself.
               Records are labelled <span className="font-semibold">manually entered</span> — nothing pretends to be
-              machine-researched. Numbers you type drive Beta and Gamma working from the same data.
+              machine-researched. Your prices and costs are used by the store, campaign and analyst.
             </p>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <Field label="Product name"><Input value={manual.title} onChange={(e) => setManual({ ...manual, title: e.target.value })} placeholder="e.g. Herbal hair oil 100ml" /></Field>
@@ -221,12 +222,29 @@ export function ProductHunterPage() {
         )}
       </Card>
 
+      {!project && <Link to="/business?new=1" className="mb-4 block text-sm font-semibold text-brand">Set up your business to research products →</Link>}
+      {project?.selected_product && <Card className="mb-5">
+        <SectionTitle title="Selected product economics" subtitle={project.selected_product.title + ' · ' + project.brief.currency} />
+        <form className="flex flex-wrap items-end gap-3" onSubmit={e => {
+          e.preventDefault()
+          run('save-economics', async () => {
+            await api.updateEconomics(project.id, { observed_price: Number(sellingPrice), observed_cost: Number(supplierCost), currency: project.brief.currency })
+            await refreshProject()
+          })
+        }}>
+          <Field label="Selling price"><Input required type="number" min="0.01" step="0.01" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} /></Field>
+          <Field label="Supplier cost per unit"><Input required type="number" min="0" step="0.01" value={supplierCost} onChange={e => setSupplierCost(e.target.value)} /></Field>
+          <Button type="submit" disabled={!!busy} busy={busy === 'save-economics'}>Save prices & costs</Button>
+          <Link to="/store" className="py-2 text-sm font-semibold text-brand">Continue to storefront →</Link>
+        </form>
+        <p className="mt-3 text-xs text-muted">Use confirmed values in your business currency. Saving clears outputs that used the previous values.</p>
+      </Card>}
       {busy === 'research' && <SkeletonCards count={3} />}
 
       {!research && busy !== 'research' && (
         <EmptyState
           title="No research yet"
-          body="Run the Product Hunter to get a ranked shortlist with scores, evidence and source URLs. Sample data is clearly labelled; live results link to their sources."
+          body="Run the Product Hunter to get a ranked shortlist with scores, evidence and source URLs. Live results link to their sources."
           action={<Button onClick={search}>Run Product Hunter</Button>}
         />
       )}          {/* Results: card view for browsing, table view for comparing numbers. */}
@@ -242,8 +260,7 @@ export function ProductHunterPage() {
                 </Select>
                 <Select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as typeof sourceFilter)} className="w-auto py-1.5 text-xs">
                   <option value="all">All sources</option>
-                  <option value="sample">Sample only</option>
-                  <option value="live">Live only</option>
+                  <option value="live">Web and imported products</option>
                 </Select>
                 <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="w-auto py-1.5 text-xs">
                   <option value="score">Sort: score</option>

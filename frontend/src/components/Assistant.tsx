@@ -16,8 +16,7 @@ interface ChatMsg { role: 'user' | 'assistant'; text: string; reply?: AssistantR
 
 // Starting points that map to supported intents.
 const SUGGESTIONS = [
-  'Find products for vitamin c serum',
-  'Run the full commerce workflow',
+  'Find products for my business',
   'Make the store more luxurious',
   'Draft a marketing campaign',
   'Analyse profitability',
@@ -25,11 +24,11 @@ const SUGGESTIONS = [
 ]
 
 export function AssistantChat() {
-  const { project, refreshProject } = useProject()
+  const { project, refreshProject, integrations } = useProject()
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       role: 'assistant',
-      text: "I'm the CommercePilot assistant. I execute real agent actions on your project — I don't fake replies. Try: 'find products for <niche>', 'make the store more luxurious', 'draft a marketing campaign', 'analyse profitability' or 'run the full commerce workflow'.",
+      text: "I can research products, build or restyle your storefront, draft a campaign, calculate profitability and compile your report using this business workspace. Ask for one action at a time, or use Overview to prepare the remaining stages.",
     },
   ])
   const [input, setInput] = useState('')
@@ -75,7 +74,7 @@ export function AssistantChat() {
             {project ? `Working on: ${project.name}` : 'No project selected'} · actions run real backend agents
           </p>
         </div>
-        <Badge tone="green" pulse>connected to agents</Badge>
+        <Badge tone={integrations?.llm.status === 'connected' ? 'green' : 'neutral'}>{integrations?.llm.status === 'connected' ? 'AI verified' : integrations?.llm.status === 'configured_unverified' ? 'AI configured' : 'AI not configured'}</Badge>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">

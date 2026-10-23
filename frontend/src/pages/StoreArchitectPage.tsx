@@ -15,7 +15,7 @@ import { DesignPanel } from '../components/DesignPanel'
 export function StoreArchitectPage() {
   const { project, run, busy, error, refreshProject, clearError } = useProject()
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
-  const spec = project?.store_spec ?? null
+  const spec = project?.store_spec?.generation_mode === 'llm' && !project.store_spec.product?.is_sample_data ? project.store_spec : null
 
   const generate = () =>
     run('generate-store', async () => {
@@ -53,9 +53,7 @@ export function StoreArchitectPage() {
           <>
             {/* Export is a plain download link to the backend renderer. */}
             {spec && (
-              <a href={api.storeExportUrl(project!.id)} download={`${spec.brand_name.replace(/\s+/g, '-').toLowerCase()}-store.html`}>
-                <Button variant="secondary">Export HTML</Button>
-              </a>
+              <Button variant="secondary" onClick={() => run('export-store', () => api.downloadStore(project!.id, 'storefront.html'))}>Export HTML</Button>
             )}
             {spec && <Button variant="secondary" onClick={reset}>Reset design</Button>}
             <Button busy={busy === 'generate-store'} onClick={generate} disabled={!project?.selected_product}>
@@ -75,7 +73,7 @@ export function StoreArchitectPage() {
       ) : !spec ? (
         <EmptyState
           title="No storefront yet"
-          body={`Generate a storefront for “${project.selected_product.title}” — it will include a responsive header, hero, product section, benefits, sample reviews, FAQ and footer.`}
+          body={`Generate a storefront for “${project.selected_product.title}” — it will use your product information and AI copy in a responsive design.`}
           action={<Button busy={busy === 'generate-store'} onClick={generate}>Generate storefront</Button>}
         />
       ) : (
@@ -107,7 +105,7 @@ export function StoreArchitectPage() {
                   <StorefrontPreview spec={spec} device={device} />
                 </div>
                 <p className="mt-2 text-[11px] text-muted">
-                  Interactive: try the catalog search, add items to the cart and change quantities. Product data marked sample/demo comes from the research dataset.
+                  Interactive: try the catalog search, add items to the cart and change quantities. Checkout must be configured in your commerce platform before accepting orders.
                 </p>
               </div>
             </Card>

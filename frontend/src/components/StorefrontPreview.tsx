@@ -391,9 +391,9 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
                   <span style={{ opacity: 0.75 }}>Subtotal</span>
                   <strong style={{ ...head(17) }}>{money(subtotal, currency)}</strong>
                 </div>
-                <p style={{ fontSize: 11.5, opacity: 0.6, margin: '6px 0 12px' }}>Shipping and taxes calculated at checkout. Demo store — checkout is not connected to payments.</p>
-                <button disabled={!cart.length} style={{ ...btn, width: '100%', padding: 13, fontSize: 14, fontWeight: 700, cursor: cart.length ? 'pointer' : 'not-allowed', opacity: cart.length ? 1 : 0.5 }}>
-                  Checkout (demo)
+                <p style={{ fontSize: 11.5, opacity: 0.6, margin: '6px 0 12px' }}>Storefront design preview. Configure checkout in your commerce platform before accepting orders.</p>
+                <button disabled style={{ ...btn, width: '100%', padding: 13, fontSize: 14, fontWeight: 700, cursor: cart.length ? 'pointer' : 'not-allowed', opacity: cart.length ? 1 : 0.5 }}>
+                  Checkout not configured
                 </button>
               </div>
             </motion.aside>
