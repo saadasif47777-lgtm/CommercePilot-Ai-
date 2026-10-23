@@ -52,7 +52,7 @@ export function CustomerSupportPage() {
       }
       if (mounted.current) {
         setStatus(await supportApi.status()); setTurns([])
-        setNotice(`Synced ${next.products} published products and ${next.policies} policies. Test an answer, then enable storefront chat and save.`)
+        setNotice(`Synced ${next.products} published products and ${next.policies} ${next.policies === 1 ? 'policy' : 'policies'}. Test an answer, then enable storefront chat and save.`)
       }
     })
     if (mounted.current) supportApi.status().then(setStatus).catch(() => {})
@@ -97,10 +97,10 @@ export function CustomerSupportPage() {
             <Field label="Assistant name"><Input required maxLength={60} value={settings.assistant_name} onChange={e => update('assistant_name', e.target.value)} /></Field>
             <Field label="Welcome message"><Textarea required maxLength={300} rows={3} value={settings.welcome} onChange={e => update('welcome', e.target.value)} /></Field>
             <div className="grid gap-3 sm:grid-cols-[1fr_110px]">
-              <Field label="Customer support email" hint="Shown when a shopper needs personal help or an answer is missing."><Input type="email" maxLength={200} value={settings.support_email} onChange={e => update('support_email', e.target.value)} placeholder="support@your-store.com" /></Field>
+              <Field label="Customer support email" hint="Shown when a shopper needs personal help or an answer is missing."><Input aria-label="Customer support email" type="email" maxLength={200} value={settings.support_email} onChange={e => update('support_email', e.target.value)} placeholder="support@your-store.com" /></Field>
               <Field label="Chat color"><Input type="color" value={settings.accent} onChange={e => update('accent', e.target.value)} className="h-11" /></Field>
             </div>
-            <Field label="Additional storefront origins" hint="One HTTPS origin per line. Your synced Shopify and primary store domains are already allowed."><Textarea rows={2} value={origins} onChange={e => setOrigins(e.target.value)} placeholder="https://www.your-store.com" /></Field>
+            <Field label="Additional storefront origins" hint="One HTTPS origin per line. Your synced Shopify and primary store domains are already allowed."><Textarea aria-label="Additional storefront origins" rows={2} value={origins} onChange={e => setOrigins(e.target.value)} placeholder="https://www.your-store.com" /></Field>
             <label className="flex cursor-pointer items-center gap-3 rounded-lg bg-mist p-3 text-sm"><input type="checkbox" checked={settings.enabled} disabled={!status?.ready && !settings.enabled} onChange={e => update('enabled', e.target.checked)} />Enable storefront chat</label>
             <Button type="submit" disabled={!!busy || !status} busy={busy === 'save'}>Save support settings</Button>
           </form>

@@ -1,5 +1,7 @@
 """Local browser-test server. Test-only provider transports never leave this process."""
+import json
 import os
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -21,13 +23,16 @@ def main():
         from tests.test_support import catalog, product, shop_data
 
         def model(url, headers, payload, timeout):
-            import json
             system = payload["messages"][0]["content"]
             user = payload["messages"][1]["content"]
             if "You interpret a shopper" in system:
-                data = {"intent": "policies", "terms": ["returns"]} if "return policy" in user else {"intent": "products", "terms": ["lamp"], "max_price": 25}
+                conversation = json.loads(re.search(r"<untrusted_conversation>\n(.*?)\n</untrusted_conversation>", user, re.S)[1])
+                message = conversation["message"].casefold()
+                if "order" in message:
+                    data = {"intent": "handoff"}
+                else:
+                    data = {"intent": "policies", "terms": ["returns"]} if "return policy" in message else {"intent": "products", "terms": ["lamp"], "max_price": 25}
             elif "friendly customer support assistant" in system:
-                import re
                 context = json.loads(re.search(r"<untrusted_knowledge>\n(.*?)\n</untrusted_knowledge>", user, re.S)[1])
                 if context["products"]:
                     data = {"answer": "This desk lamp fits your budget. Check the product page for current price and availability.", "product_ids": [context["products"][0]["id"]]}
@@ -47,7 +52,7 @@ def main():
 
         def transport(request):
             if "myshopify.com" in request.url.host:
-                query = __import__("json").loads(request.content)
+                query = json.loads(request.content)
                 if "SupportShop" in query["query"]:
                     return httpx.Response(200, json={"data": shop_data()})
                 if "SupportCatalog" in query["query"]:
