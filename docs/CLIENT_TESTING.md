@@ -22,6 +22,8 @@ The UI and workspace API open without sign-in. Anyone who can reach the deployme
 
 ## Automated checks and boundaries
 
+Before creating a project, open AI Commerce Assistant and ask how to start. Describe a niche, location and budget with currency and scope. Confirm the assistant explains the workflow and asks only for missing details. Check that the budget rows sum to available funds, warnings retain unknown costs, and follow-ups/reloads retain your planning context. Enter a loss-making unit cost and confirm paid testing is held. With a saved project, request a report, review the named action and confirm it. The assistant must distinguish campaign drafting here from external ad publication.
+
 Run Python tests, Ruff, frontend build and Playwright as described in README. CI supplies a disposable PostgreSQL service for real persistence and encrypted-credential checks. Browser tests run the actual API, UI and SQLite persistence, replacing only the external model/search/Shopify/Meta transports inside `tests/browser_server.py`. Those test fixtures are not part of production startup.
 
 Live provider verification, client-specific tokens/scopes, deployment configuration and factual review of generated copy require acceptance against your own accounts. Payments, checkout integration, ad publication, OAuth onboarding and multi-tenant user accounts remain separate features.

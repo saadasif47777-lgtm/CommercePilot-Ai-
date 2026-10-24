@@ -110,3 +110,42 @@ def test_postgres_support_limit_concurrent_requests(target):
     with ThreadPoolExecutor(max_workers=5) as workers:
         outcomes = list(workers.map(attempt, range(5)))
     assert outcomes.count(200) == 3 and outcomes.count(429) == 2
+
+
+def test_postgres_advisor_conversation_is_durable_and_isolated(target):
+    from commercepilot.advisor.store import AdvisorStore
+    from commercepilot.database import Database
+
+    first, second = AdvisorStore(Database(target)), AdvisorStore(Database(target))
+    token = first.create("project-a")
+    row, data = second.reserve(token)
+    assert row["project_id"] == "project-a" and data["messages"] == []
+    data["overrides"] = {"budget": 50000, "currency": "PKR", "location": "Lahore"}
+    data["messages"] = [{"role": "user", "text": "Help plan my business"}]
+    second.finish(token, data)
+    assert first.read(token, "project-a", check_project=True)[1]["overrides"]["budget"] == 50000
+    other = first.create("project-b")
+    assert second.read(other)[1]["messages"] == []
+
+
+def test_postgres_advisor_daily_budget_is_replica_safe(target, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fastapi import HTTPException
+
+    from commercepilot.advisor.store import AdvisorStore
+    from commercepilot.database import Database
+
+    store = AdvisorStore(Database(target))
+    monkeypatch.setattr(config, "ADVISOR_DAILY_MESSAGES", 3)
+    tokens = [store.create() for _ in range(5)]
+    def reserve(token):
+        try:
+            store.reserve(token)
+            store.finish(token)
+            return 200
+        except HTTPException as exc:
+            return exc.status_code
+    with ThreadPoolExecutor(max_workers=5) as workers:
+        results = list(workers.map(reserve, tokens))
+    assert results.count(200) == 3 and results.count(429) == 2

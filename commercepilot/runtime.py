@@ -51,3 +51,12 @@ def get_support_store():
         if not hasattr(workspace, "_support_store"):
             workspace._support_store = SupportStore(workspace._conn())
         return workspace._support_store
+
+
+def get_advisor_store():
+    from .advisor.store import AdvisorStore
+    workspace = get_store()
+    with _support_lock:
+        if not hasattr(workspace, "_advisor_store"):
+            workspace._advisor_store = AdvisorStore(workspace._conn())
+        return workspace._advisor_store
