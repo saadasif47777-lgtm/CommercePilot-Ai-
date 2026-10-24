@@ -1,0 +1,15 @@
+# Keep tool settings outside pyproject.toml: Vercel must install requirements.txt.
+target-version = "py312"
+line-length = 110
+exclude = [".venv", "data"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "SIM", "RUF"]
+ignore = [
+    "E501",  # Long lines are allowed where wrapping would hurt readability.
+    "B008",  # FastAPI Body/Query defaults are intentional.
+    "RUF001", "RUF002", "RUF003",  # Typographic characters in prose.
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011"]
