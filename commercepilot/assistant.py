@@ -71,12 +71,12 @@ def _detect_intent(message: str) -> str:
     return "unknown"
 
 
-def handle(store: ProjectStore, project_id: Optional[str], message: str) -> dict[str, Any]:
+def handle(store: ProjectStore, project_id: Optional[str], message: str, *, intent_override: Optional[str] = None) -> dict[str, Any]:
     project = store.get(project_id) if project_id else None
     lowered = message.lower()
-    if re.search(CHAIN_PATTERN, lowered) and len(_split_chain(message)) > 1:
+    if not intent_override and re.search(CHAIN_PATTERN, lowered) and len(_split_chain(message)) > 1:
         return _handle_chain(store, project_id, _split_chain(message))
-    intent = _detect_intent(message)
+    intent = intent_override or _detect_intent(message)
 
     if intent == "unknown":
         return {

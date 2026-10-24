@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 
 from . import ai, config, integrations
+from .advisor.routes import router as advisor_router
 from .agents import product_hunter
 from .assistant import handle as assistant_handle
 from .credentials import CredentialError
@@ -76,6 +77,7 @@ app.add_middleware(
 
 app.middleware("http")(protect)
 app.include_router(support_router)
+app.include_router(advisor_router)
 
 
 @app.exception_handler(CredentialError)

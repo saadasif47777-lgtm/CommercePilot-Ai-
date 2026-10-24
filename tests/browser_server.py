@@ -25,7 +25,28 @@ def main():
         def model(url, headers, payload, timeout):
             system = payload["messages"][0]["content"]
             user = payload["messages"][1]["content"]
-            if "You interpret a shopper" in system:
+            if "You interpret a CommercePilot" in system:
+                conversation = json.loads(re.search(r"<untrusted_conversation>\n(.*?)\n</untrusted_conversation>", user, re.S)[1])
+                message = conversation["message"].casefold()
+                if "report" in message:
+                    data = {"intent": "action", "requested_action": "report"}
+                elif "50k" in message:
+                    data = {"intent": "budget", "updates": {"budget": 50000, "currency": "PKR", "budget_scope": "business", "niche": "skincare", "location": "Lahore"},
+                            "evidence": {"budget": "50k", "currency": "PKR", "budget_scope": "whole business", "niche": "skincare", "location": "Lahore"}}
+                else:
+                    data = {"intent": "guidance"}
+            elif "CommercePilot's friendly AI business guide" in system:
+                context = json.loads(re.search(r"<untrusted_context>\n(.*?)\n</untrusted_context>", user, re.S)[1])
+                profile = context["profile"]
+                data = {"reply": "Welcome! I can guide your business setup, review your idea and help prepare a sensible budget. Marketing Studio creates campaign drafts for your review; it does not publish or spend money.",
+                        "next_steps": [{"title": "Save your business details", "explanation": "Enter your niche, location and audience.", "route": "/business"}],
+                        "questions": ["Who is your target customer?"]}
+                if profile.get("niche"):
+                    data.update(reply=f"For {profile['niche']} in {profile.get('location') or 'your market'}, validate the offer and costs before a small ad test. Use the calculated budget to keep a reserve.",
+                                strengths=["A focused niche can make your first creative test more specific."],
+                                risks=[{"factor": "Delivery and returns", "explanation": "Local fulfilment and returns can reduce the margin.", "mitigation": "Get courier quotes and include fees and return costs before advertising."}],
+                                next_steps=[{"title": "Prepare a campaign draft", "explanation": "Review the budget, then prepare creative tests in Marketing Studio.", "route": "/marketing"}])
+            elif "You interpret a shopper" in system:
                 conversation = json.loads(re.search(r"<untrusted_conversation>\n(.*?)\n</untrusted_conversation>", user, re.S)[1])
                 message = conversation["message"].casefold()
                 if "order" in message:

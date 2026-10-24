@@ -55,6 +55,7 @@ export function OverviewPage() {
                   </svg>
                   Add New Project
                 </Button>
+                <Link to="/assistant"><Button size="lg" variant="secondary">Ask AI where to start</Button></Link>
               </div>
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
@@ -86,7 +87,7 @@ export function OverviewPage() {
 
         {projects.length > 0 && (
           <div className="mt-8">
-            <SectionTitle title="Existing projects" subtitle="Pick up where you left off — projects persist in SQLite." />
+            <SectionTitle title="Existing projects" subtitle="Pick up where you left off with your saved business information." />
             <div className="grid gap-3 md:grid-cols-3">
               {projects.slice(0, 6).map((p) => (
                 <ProjectTile key={p.id} id={p.id} name={p.name} updated={p.updated_at} steps={p.steps} example={p.is_example} />

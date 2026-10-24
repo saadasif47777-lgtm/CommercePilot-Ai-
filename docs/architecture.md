@@ -22,6 +22,10 @@ Shopify reads a bounded GraphQL product page with `read_products`, pinned via `S
 
 Usage records contain model/prompt identifiers and token counts, not prompt contents. The monthly threshold uses estimated prices and is not a hard billing cap. Provider limits are the authoritative billing control. Production release requires live credential tests, backup/restore verification, TLS and proxy rate/body limits; see DEPLOYMENT.md.
 
+## Conversational business advisor
+
+`advisor/` provides a visitor-ready guide and business budget planner, distinct from the legacy command router and shopper support widget. A bounded structured planning call extracts current-message facts with quoted evidence, a pure Decimal calculation produces allocations/economics, and a second grounded call explains ideas and next steps using the actual platform guide. Conversation profiles/history persist in expiring SQL sessions with hashed tokens and distributed quotas. Explicit workspace operations require a single-use confirmation bound to project/revision; campaign drafts use the calculated test share. See [AI advisor](AI_ADVISOR.md).
+
 ## Customer support
 
 `support/` provides a separate shopper assistant using the same model client, usage budget and SQL boundary. A resumable Shopify GraphQL sync stages published products and policy text under a new generation, then atomically promotes the complete snapshot. Structured model plans feed parameterized SQL filters; policy excerpts and merchant FAQs provide answer evidence. Returned product cards and source URLs are reconstructed from retrieved records. Short-lived opaque customer sessions and distributed rate counters are stored in dedicated SQL tables. The Shadow DOM widget is served through `/api/support/widget.js`; its origin allowance applies only to `/api/support/widget/{id}/...`, leaving workspace write-origin checks intact. See [Shopify support](SHOPIFY_SUPPORT.md) for setup, manual refresh, expiration, retention and current limits.

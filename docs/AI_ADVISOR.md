@@ -1,0 +1,45 @@
+# AI business guide and budget planning
+
+The AI Commerce Assistant now supports ordinary conversation, onboarding, business idea reviews and practical budget planning in addition to workspace actions. It works without a selected project. The Shopify Customer Support widget remains a separate assistant for shoppers.
+
+## User workflow
+
+Open **Ask AI where to start** on the welcome page or **AI Commerce Assistant** in the sidebar. Ask how the platform works, describe your idea or share a budget and location. The assistant uses version-controlled facts about the current platform: Business information, Product Hunter, Store Architect, Marketing Studio, Analytics, Connections, Shopify customer support and project history.
+
+The conversation follows up on known facts instead of requesting them repeatedly. It can respond in the user's language, including Urdu/Roman Urdu, through the configured model. Idea reviews discuss potential strengths, demand evidence, differentiation, audience/location, competition, suppliers, fulfilment, returns, costs, acquisition, tracking, cash flow and relevant local checks. Strengths are hypotheses until supported by evidence. Local tax/legal requirements and ad prices must be verified; the assistant does not invent local benchmarks or demand statistics.
+
+Planning details can be provided conversationally or in the side panel. Confirm currency, whether the budget covers the whole business or only advertising, niche, location and audience. Optional inputs include business model, planning days, committed fixed costs, selling price, supplier/product cost, total other costs per order, checkout/tracking readiness and explicit CPC/conversion assumptions. Leaving a cost blank preserves it as unknown. Enter zero only when it is known to be zero. Changing currency in the form clears old monetary amounts; no FX conversion occurs.
+
+When a project is selected, saved niche, market, audience, currency, campaign budget and confirmed product price/cost seed the planning context. Chat overrides stay in this conversation; they do not silently edit the business brief or product. Use the context selector to plan a separate idea without the current project. Updates to saved project facts are re-read for each turn while explicit chat overrides retain priority.
+
+## Finance behavior
+
+Model output does not calculate amounts. A structured interpretation extracts only current-message facts with quoted evidence. Numeric updates must match a number in their evidence, including supported k/thousand/lakh/million multipliers. A second model call receives the validated profile, current project, factual platform guide, previous conversation and calculated finances to explain trade-offs and next steps.
+
+`advisor/finance.py` separates business budgets from advertising budgets. It deducts stated committed fixed costs, allocates remaining funds by an explicitly labeled planning template, keeps a cash reserve, and uses largest-remainder cent rounding so line items equal the available total. Templates differ for physical products, dropshipping, digital products, services and advertising preparation. They are adjustable starting assumptions, not evidence of an optimal allocation or market benchmark. Location affects the discussion and the quotes/cost inputs the user should obtain; there is no invented city-specific CPC, tax, shipping rate or automatic currency conversion.
+
+Confirmed price minus product cost gives gross profit. Contribution requires all three inputs: price, product cost and other costs per order. Missing costs do not become zero. Positive contribution supplies a theoretical break-even acquisition cost and price/contribution ROAS; supplied fixed costs can be divided by contribution for break-even order count. These boundaries exclude unprovided costs and taxes and do not guarantee profit. See the [SBA break-even calculator](https://www.sba.gov/counseling/plan-your-business/break-even-point-calculator/) for the underlying fixed/variable cost relationship.
+
+Zero/negative known margins, a zero budget, an explicitly unfinished checkout or explicitly missing tracking hold the ad-test share at zero and move that amount to reserve. Incomplete costs reduce the provisional test share. Fixed commitments exceeding total funds produce an explicit shortfall, rather than an overspending plan. The default 7-day window is labeled as an assumption when the user has not provided one. The displayed daily average is not an enforced Meta spending limit; [Meta account spending limits](https://www.facebook.com/business/help/141820733085330) must be reviewed in the ad account before publishing.
+
+A scenario is generated only when the user supplies both CPC and a conversion percentage. Clicks, illustrative orders, revenue (when price is known) and contribution after ads (when full variable costs are known) are computed from those inputs and labeled as an illustration, not a prediction. Fixed overheads and taxes are not implicitly deducted from that contribution figure.
+
+## Platform promotion and actions
+
+The assistant recommends the platform's tools when they serve the user's needs: research a niche, validate costs, prepare creatives and budgets, review actual measurements and iterate. It explains concrete benefits, pros/cons and alternatives, and does not pressure users to advertise, invent success claims, promise returns or urge borrowing. Users who are not ready for paid acquisition get validation and readiness steps first.
+
+Meta access remains read-only reporting. CommercePilot drafts campaigns but does not launch ads, purchase delivery or charge advertising money. Guidance explains that reviewed campaigns are published externally in the user's ad account. A storefront export is still a draft; checkout/payment operations, private order actions and multi-tenant authorization are not added by this change.
+
+Explicit requests to research, generate a store, draft a campaign, analyze a saved product or build a report offer a named confirmation button bound to the selected project's revision. Ordinary questions about ads/budgets do not execute commands. Confirmation is single-use and rejects a changed workspace. Campaign drafting uses the calculated ad-test amount and requires matching project/planning currencies; it does not allocate the whole startup budget to ads. The legacy project-command HTTP endpoint is retained for compatibility; the website uses the new conversational API.
+
+## Persistence, limits and HTTP
+
+`POST /api/advisor/session` opens or resumes a conversation with an optional `project_id` and opaque `session_token`. `POST /api/advisor/chat` accepts the token plus a message, optional validated `profile_updates`, or a previously offered `confirmed_action`. Tokens are never placed in URLs. The browser stores them in sessionStorage per project/general context; storage is optional. Only token hashes are stored in SQL. Sessions expire after 24 hours; only the latest 12 visible messages are retained, with at most eight text turns sent to the model. Expiration is enforced on access and expired transcripts are removed when new sessions are created.
+
+Separate sessions have separate business profiles and messages, and project bindings are checked on resume. Concurrent turns return a retryable conflict. SQL counters enforce 30 messages per conversation per hour, `ADVISOR_DAILY_MESSAGES` (default 200) logical turns per UTC day per workspace, and 300 new sessions per day. Failed attempts count too. The configured model client's existing estimated monthly usage cap also applies. Guidance uses bounded 10-second calls with no transport retries and at most one JSON repair per call; a successful guidance turn ordinarily makes two calls, while form updates skip interpretation. Workspace generation operations retain their existing provider behavior and infrastructure timeouts can still surface a retryable error.
+
+This does not add login or tenant isolation to the merchant workspace. The earlier shared/open workspace decision remains in force; restrict merchant routes through hosting/network controls for confidential client use. Origin protections remain enabled and Shopify customer widget origins do not gain write access to the advisor API. No API keys, raw integration tokens or unrelated projects are passed as model context.
+
+## Verification
+
+Regression coverage includes exact allocations, tiny/zero budgets, missing costs, negative contribution, fixed commitments, explicit scenarios, evidence validation, currency changes, first-time guidance, remembered profiles, session isolation/expiry, origin checks, failure recovery, action confirmation/replay and PostgreSQL persistence/concurrent quotas. Chromium checks cover onboarding without a project, natural budget input, memory after follow-up/reload, planning edits, loss-making budget hold and mobile width, alongside existing commerce and Shopify widget workflows. External provider transports are mocked in tests. Deployment status and authenticated real-model acceptance are checked separately when access is available.

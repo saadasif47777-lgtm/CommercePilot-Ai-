@@ -28,6 +28,10 @@ For an explicitly local demonstration, set `APP_MODE=demo`. That allows sample d
 5. Save selling price and supplier cost in Products. Analyze real prices and costs, supply campaign measurements, and enter explicit scenario assumptions. Later analysis updates preserve your existing actuals and overhead inputs.
 6. Export the storefront draft and project report. Publishing, checkout and ad buying are separate operations that this backend does not implement.
 
+## AI business guide and budget planner
+
+The **AI Commerce Assistant** answers platform questions before a project exists, remembers business details within an expiring conversation, reviews ideas with balanced strengths/risks and guides users to the right workflow. Share your niche, target location/audience, currency and budget, or use the editable Planning details panel. Whole-business and advertising-only plans are distinct; allocations, contribution margins, acquisition break-even and explicit scenarios are calculated in code. Unknown costs remain unknown. Workspace operations are offered for confirmation and campaign drafts use the calculated test share. See the [assistant guide](docs/AI_ADVISOR.md).
+
 ## Shopify customer support
 
 Open **Customer Support** to sync Shopify's published catalog and policies, customize the assistant, add store FAQs, test real model answers and copy the customer chat installation code. The widget suggests products with saved prices and verified store links, answers from published policies, and directs personal order questions to your support contact. It uses the existing model and SQL database. See the [Shopify support setup guide](docs/SHOPIFY_SUPPORT.md) for permissions, installation, refresh behavior and limits.
