@@ -38,6 +38,9 @@ test('text, product metrics and actions remain aligned at mobile tablet and desk
     expect(Math.abs(box!.y - boxes[0]!.y)).toBeLessThan(2)
     expect(Math.abs(box!.height - 40)).toBeLessThan(2)
   }
+  const constraintBox = await page.getByLabel(/^Constraints/).boundingBox()
+  const actionBox = await page.getByRole('button', { name: 'Re-run research', exact: true }).boundingBox()
+  expect(Math.abs(constraintBox!.y - actionBox!.y)).toBeLessThan(2)
 })
 
 test('imports an individual product URL and persists its page provenance in the library', async ({ page, request }) => {
