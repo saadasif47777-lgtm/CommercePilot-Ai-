@@ -35,7 +35,7 @@ from ..schemas import (
     utcnow,
 )
 from ..tools import calculations as calc
-from ..tools.product_pages import PageFacts, inspect_pages
+from ..tools.product_pages import PageFacts, inspect_pages, is_collection_url
 from ..tools.web_search import SearchResult, search
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_products.json"
@@ -159,12 +159,7 @@ def _live_product(result: SearchResult, index: int) -> Product:
     price, currency = parse_price(f"{result.title} {result.snippet}")
     text = f"{result.title} {result.snippet}"
     category = guess_category(text)
-    url = result.url.lower()
-    collection = bool(re.search(r"/(?:collections|categories|category|catalog|search|items)(?:/|\?|$)|[?&]q=", url))
-    if "daraz.pk/" in url and not re.search(r"-i\d+.*\.html", url):
-        collection = True
-    if "olx.pk/" in url and "/item/" not in url:
-        collection = True
+    collection = is_collection_url(result.url)
     signals = [
         DemandSignal(
             label="Live search result",
@@ -179,10 +174,10 @@ def _live_product(result: SearchResult, index: int) -> Product:
         category=category,
         source="live",
         source_url=result.url,
-        observed_price=price,
-        price_source="search snippet — confirm on source" if price else "not provided",
+        observed_price=None if collection else price,
+        price_source="collection has no single product price" if collection else "search snippet — confirm on source" if price else "not provided",
         page_kind="collection" if collection else "not_checked",
-        currency=currency,
+        currency=None if collection else currency,
         estimated_cost=None,  # unknown - never invented
         demand_level=None,  # unknown - a search hit is not demand evidence
         demand_signals=signals,
@@ -522,10 +517,12 @@ def run(req: ResearchRequest) -> ResearchResult:
             facts = inspect_pages([p.source_url for p in live_products[:4]])
             for product, page in zip(live_products, facts, strict=False):
                 enrich_product(product, page)
-            children = list(dict.fromkeys(link for page in facts if page.kind == "collection" for link in page.links[:2]))[:4]
+            niche_words = [w.rstrip("s") for w in re.findall(r"[a-z]+", (req.niche or "").lower()) if len(w) > 3 and w not in {"ceramic", "handmade", "decorative", "products"}]
+            children = list(dict.fromkeys(link for page in facts if page.kind == "collection"
+                                          for link in sorted(page.links, key=lambda link: not any(w in link.lower() for w in niche_words))[:2]))[:4]
             existing_urls = {p.source_url for p in live_products}
             for page in inspect_pages([link for link in children if link not in existing_urls]):
-                if page.kind == "product":
+                if page.kind == "product" and (not niche_words or any(w in page.title.lower() for w in niche_words)):
                     live_products.append(enrich_product(_live_product(SearchResult(page.title, page.url, page.description), 0), page))
             domains = sorted({_domain(r.url) for r in outcome.results if _domain(r.url)})
             sources.extend(domains)
@@ -596,7 +593,7 @@ def run(req: ResearchRequest) -> ResearchResult:
             )
     scored = scored[: req.limit]
 
-    unknown_priced = sum(1 for p in scored if p.observed_price is None)
+    unknown_priced = sum(1 for p in scored if p.observed_price is None and p.page_kind != "collection")
     if unknown_priced:
         warnings.append(
             f"{unknown_priced} result(s) need price confirmation. Open an individual product link or import your catalog."

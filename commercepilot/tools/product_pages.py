@@ -26,6 +26,18 @@ class PageError(Exception):
     pass
 
 
+def is_collection_url(url):
+    parts = urlsplit(url.lower())
+    path = parts.path
+    if re.search(r"/products/[^/]+/?$|-i\d+.*\.html$|/item/", path):
+        return False
+    if path in ("", "/"):
+        return True
+    if re.search(r"/(?:collections|categories|category|catalog|search|items|tag)(?:/|$)|[?&]q=", url.lower()):
+        return True
+    return parts.hostname in {"daraz.pk", "www.daraz.pk", "olx.pk", "www.olx.pk", "olx.com.pk", "www.olx.com.pk"}
+
+
 def public_target(url):
     parts = urlsplit(url)
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or parts.port not in (None, 443):
@@ -175,8 +187,14 @@ def extract_page(html, url):
             nodes.extend(_nodes(json.loads(block)))
         except (ValueError, RecursionError):
             continue
+    groups = [n for n in nodes if "ProductGroup" in _types(n)]
     products = [n for n in nodes if "Product" in _types(n)]
-    collection = any(_types(n) & {"CollectionPage", "ItemList", "SearchResultsPage"} for n in nodes)
+    if not products and len(groups) == 1:
+        variants = groups[0].get("hasVariant", [])
+        variants = variants if isinstance(variants, list) else [variants]
+        if len(variants) == 1 and isinstance(variants[0], dict):
+            products = [dict(variants[0], name=groups[0].get("name") or variants[0].get("name"))]
+    collection = is_collection_url(url) or any(_types(n) & {"CollectionPage", "ItemList", "SearchResultsPage"} for n in nodes)
     facts = PageFacts(url=url)
     for href in parser.links:
         link = urldefrag(urljoin(url, href))[0]
@@ -204,12 +222,15 @@ def extract_page(html, url):
             facts.availability = str(offers[0].get("availability", "not provided")).rsplit("/", 1)[-1][:60]
     elif not collection and not products and parser.meta.get("og:type", "").lower() == "product":
         facts.kind = "product"
-        facts.title = _text(parser.meta.get("og:title"), 200)
-        facts.description = _text(parser.meta.get("og:description"))
-        facts.price = _price(parser.meta.get("product:price:amount"))
-        currency = parser.meta.get("product:price:currency", "").upper()
+        facts.title = _text(groups[0].get("name") if len(groups) == 1 else parser.meta.get("og:title"), 200)
+        facts.description = _text(groups[0].get("description") if len(groups) == 1 else parser.meta.get("og:description"))
+        facts.price = _price(parser.meta.get("product:price:amount") or parser.meta.get("og:price:amount"))
+        currency = (parser.meta.get("product:price:currency") or parser.meta.get("og:price:currency") or "").upper()
         facts.currency = currency if re.fullmatch(r"[A-Z]{3}", currency) else None
         facts.price_basis = "product page metadata" if facts.price else "not found"
+        if groups:
+            facts.price_basis = "displayed variant price — confirm choice" if facts.price else "not found"
+            facts.note = "This page has variants. The displayed page price may apply to one option only; confirm the selected size/color and price before use."
     else:
         facts.kind = "collection" if collection or len(products) > 1 or facts.links else "needs_review"
         facts.note = "Collection/search page, not an individual product." if facts.kind == "collection" else "No unambiguous product data found; confirm details manually."

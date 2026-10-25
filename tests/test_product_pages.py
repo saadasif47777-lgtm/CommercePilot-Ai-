@@ -49,6 +49,25 @@ def test_product_metadata_fallback_requires_product_identity():
     assert result.price == 2500 and result.currency == "PKR"
 
 
+def test_shopify_og_price_alias_and_single_variant_product_group():
+    markup = '<meta property="og:type" content="product"><meta property="og:title" content="Vase"><meta property="og:price:amount" content="3,450"><meta property="og:price:currency" content="PKR">'
+    result = pages.extract_page(markup, "https://shop.example/products/vase")
+    assert result.price == 3450 and result.currency == "PKR"
+    result = pages.extract_page(html({"@type": "ProductGroup", "name": "Vase", "hasVariant": [product()]}), "https://shop.example/products/vase")
+    assert result.title == "Vase" and result.price == 2500.5
+    group = {"@type": "ProductGroup", "name": "Variant vase", "hasVariant": [product(), product()]}
+    result = pages.extract_page(markup + html(group), "https://shop.example/products/vase")
+    assert result.title == "Variant vase" and result.price == 3450
+    assert "variant" in result.price_basis and "confirm" in result.note.lower()
+
+
+def test_marketplace_tag_cannot_claim_product_identity_through_og_type():
+    result = pages.extract_page('<meta property="og:type" content="product">', "https://www.daraz.pk/tag/ceramic-vases/")
+    assert result.kind == "collection" and result.price is None
+    assert pages.is_collection_url("https://www.olx.com.pk/vases_c707170")
+    assert not pages.is_collection_url("https://brand.example/collections/vases/products/green-vase")
+
+
 @pytest.mark.parametrize("url", ["http://shop.example/p", "https://user:secret@shop.example/p", "https://shop.example:444/p"])
 def test_rejects_unsafe_url_schemes_credentials_and_ports(url):
     with pytest.raises(pages.PageError):
