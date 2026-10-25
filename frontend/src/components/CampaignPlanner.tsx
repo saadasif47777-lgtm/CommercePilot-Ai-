@@ -17,15 +17,12 @@ export function CampaignPlanner() {
   const [objective, setObjective] = useState('sales')
   const [budget, setBudget] = useState(0)
   const [duration, setDuration] = useState(14)
-  const [targeting, setTargeting] = useState<CampaignTargeting>({ locations: [], languages: [], age_min: 18, age_max: 65, placements: ['instagram_feed', 'instagram_stories', 'instagram_reels'], landing_url: '', optimization: 'purchase' })
+  const [targeting, setTargeting] = useState<CampaignTargeting>(() => project?.campaign?.targeting ?? { locations: project?.brief.target_market ? [project.brief.target_market] : [], languages: [], age_min: 18, age_max: 65, placements: ['instagram_feed', 'instagram_stories', 'instagram_reels'], landing_url: '', optimization: 'purchase' })
   const [allocations, setAllocations] = useState<{ label: string; amount: number; purpose: string }[]>([])
   const [allocError, setAllocError] = useState<string | null>(null)
   const [actuals, setActuals] = useState({ ad_spend: '', clicks: '', conversions: '', customers: '', revenue: '' })
 
   const plan = project?.campaign ?? null
-  useEffect(() => {
-    setTargeting(project?.campaign?.targeting ?? { locations: project?.brief.target_market ? [project.brief.target_market] : [], languages: [], age_min: 18, age_max: 65, placements: ['instagram_feed', 'instagram_stories', 'instagram_reels'], landing_url: '', optimization: 'purchase' })
-  }, [project?.id, project?.campaign?.created_at])
 
   // Default the budget to the brief's campaign budget.
   useEffect(() => {

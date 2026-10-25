@@ -42,7 +42,7 @@ export function MarketingPage() {
       {!project?.selected_product ? (
         <EmptyState title="Select a product to plan your campaign" body="Set up your business, then select or import a product in Products." />
       ) : (
-        <CampaignPlanner />
+        <CampaignPlanner key={project.id} />
       )}
     </div>
   )
