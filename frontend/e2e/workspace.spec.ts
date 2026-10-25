@@ -31,7 +31,7 @@ test('text, product metrics and actions remain aligned at mobile tablet and desk
     }
   }
   await page.setViewportSize({ width: 1280, height: 900 })
-  const fields = [page.getByLabel(/^Niche /), page.getByLabel('Research source', { exact: true }), page.getByLabel('Price PKR min', { exact: true }), page.getByLabel('Price max', { exact: true })]
+  const fields = [page.getByLabel(/^Niche/), page.getByLabel('Research source', { exact: true }), page.getByLabel('Price PKR min', { exact: true }), page.getByLabel('Price max', { exact: true })]
   const boxes = await Promise.all(fields.map(field => field.boundingBox()))
   for (const box of boxes) {
     expect(box).not.toBeNull()
