@@ -593,7 +593,7 @@ def run(req: ResearchRequest) -> ResearchResult:
             )
     scored = scored[: req.limit]
 
-    unknown_priced = sum(1 for p in scored if p.observed_price is None)
+    unknown_priced = sum(1 for p in scored if p.observed_price is None and p.page_kind != "collection")
     if unknown_priced:
         warnings.append(
             f"{unknown_priced} result(s) need price confirmation. Open an individual product link or import your catalog."
