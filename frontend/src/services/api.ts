@@ -109,7 +109,7 @@ export const api = {
     post<StoreEditResponse>(`/api/projects/${id}/edit-store`, { prompt }),
   resetStore: (id: string) => post<{ reset: boolean; spec?: WebsiteSpec }>(`/api/projects/${id}/reset-store`),
 
-  generateCampaign: (id: string, payload?: { objective?: string; budget?: number; duration_days?: number }) =>
+  generateCampaign: (id: string, payload?: { objective?: string; budget?: number; duration_days?: number; targeting?: import('../types').CampaignTargeting }) =>
     post<CampaignPlan>(`/api/projects/${id}/generate-campaign`, payload ?? {}),
   updateCampaign: (
     id: string,

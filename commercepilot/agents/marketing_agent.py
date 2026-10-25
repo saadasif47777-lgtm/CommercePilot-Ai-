@@ -146,6 +146,7 @@ def generate(brief: BusinessBrief, product: Product, request: CampaignRequest) -
     ]
 
     plan = CampaignPlan(
+        targeting=request.targeting,
         publication="DRAFT - NOT PUBLISHED" if config.production() else "DEMO - NOT PUBLISHED",
         objective=request.objective,
         objective_detail=OBJECTIVE_DETAIL[request.objective],
@@ -229,6 +230,7 @@ def _llm_prompt(brief: BusinessBrief, product: Product, request: CampaignRequest
         f"Audience: {ai.wrap_untrusted('audience', audience_text)}\n"
         f"Objective: {request.objective}, budget: {request.budget} {brief.currency}, "
         f"days: {request.duration_days}\n"
+        f"Delivery brief: {ai.wrap_untrusted('targeting', request.targeting.model_dump_json())}\n"
         "Write 3 headlines and 3 primary texts now."
     )
 

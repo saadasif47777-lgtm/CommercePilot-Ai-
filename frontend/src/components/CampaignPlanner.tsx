@@ -10,17 +10,22 @@ import { api, errorText } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, Field, Input, SectionTitle, Select, WarningList } from './ui'
 import { BudgetDonut } from './Charts'
+import type { CampaignTargeting } from '../types'
 
 export function CampaignPlanner() {
   const { project, run, refreshProject, busy } = useProject()
   const [objective, setObjective] = useState('sales')
   const [budget, setBudget] = useState(0)
   const [duration, setDuration] = useState(14)
+  const [targeting, setTargeting] = useState<CampaignTargeting>({ locations: [], languages: [], age_min: 18, age_max: 65, placements: ['instagram_feed', 'instagram_stories', 'instagram_reels'], landing_url: '', optimization: 'purchase' })
   const [allocations, setAllocations] = useState<{ label: string; amount: number; purpose: string }[]>([])
   const [allocError, setAllocError] = useState<string | null>(null)
   const [actuals, setActuals] = useState({ ad_spend: '', clicks: '', conversions: '', customers: '', revenue: '' })
 
   const plan = project?.campaign ?? null
+  useEffect(() => {
+    setTargeting(project?.campaign?.targeting ?? { locations: project?.brief.target_market ? [project.brief.target_market] : [], languages: [], age_min: 18, age_max: 65, placements: ['instagram_feed', 'instagram_stories', 'instagram_reels'], landing_url: '', optimization: 'purchase' })
+  }, [project?.id, project?.campaign?.created_at])
 
   // Default the budget to the brief's campaign budget.
   useEffect(() => {
@@ -45,7 +50,9 @@ export function CampaignPlanner() {
   const generate = () =>
     run('generate-campaign', async () => {
       if (!project) return
-      await api.generateCampaign(project.id, { objective, budget, duration_days: duration })
+      if (targeting.age_max < targeting.age_min) throw new Error('Maximum age must be at least minimum age.')
+      if (targeting.landing_url && !/^https:\/\/\S+$/.test(targeting.landing_url)) throw new Error('Use an HTTPS landing page URL.')
+      await api.generateCampaign(project.id, { objective, budget, duration_days: duration, targeting })
       await refreshProject()
     })
 
@@ -118,6 +125,19 @@ export function CampaignPlanner() {
               {plan ? 'Regenerate plan' : 'Generate campaign plan'}
             </Button>
           </div>
+        </div>
+        <div className="mt-5 border-t border-line pt-5">
+          <SectionTitle title="Audience & delivery" subtitle="Saved with your campaign draft. These choices guide creative planning; review availability and configure delivery in Meta Ads Manager." />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Target locations" hint="Cities or countries, separated by commas"><Input value={targeting.locations.join(', ')} onChange={e => setTargeting({ ...targeting, locations: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} /></Field>
+            <Field label="Languages" hint="Leave blank for all languages"><Input value={targeting.languages.join(', ')} onChange={e => setTargeting({ ...targeting, languages: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} /></Field>
+            <Field label="Minimum age"><Input type="number" min={18} max={65} value={targeting.age_min} onChange={e => setTargeting({ ...targeting, age_min: Number(e.target.value) })} /></Field>
+            <Field label="Maximum age"><Input type="number" min={targeting.age_min} max={65} value={targeting.age_max} onChange={e => setTargeting({ ...targeting, age_max: Number(e.target.value) })} /></Field>
+            <Field label="Landing page URL"><Input type="url" placeholder="https://your-brand.com/products/item" value={targeting.landing_url} onChange={e => setTargeting({ ...targeting, landing_url: e.target.value })} /></Field>
+            <Field label="Conversion goal"><Select value={targeting.optimization} onChange={e => setTargeting({ ...targeting, optimization: e.target.value })}><option value="purchase">Purchase</option><option value="landing_page_view">Landing page view</option><option value="lead">Lead submission</option></Select></Field>
+          </div>
+          <fieldset className="mt-4"><legend className="mb-2 text-sm font-semibold">Planned placements</legend><div className="flex flex-wrap gap-3">{['facebook_feed', 'instagram_feed', 'instagram_stories', 'instagram_reels', 'facebook_reels'].map(p => <label key={p} className="flex items-center gap-2 rounded-lg border border-line p-3 text-sm"><input type="checkbox" checked={targeting.placements.includes(p)} onChange={e => setTargeting({ ...targeting, placements: e.target.checked ? [...targeting.placements, p] : targeting.placements.filter(x => x !== p) })} />{p.replaceAll('_', ' ')}</label>)}</div></fieldset>
+          <p className="mt-3 text-xs text-muted">Use vertical 9:16 assets for Stories/Reels and square or portrait assets for feeds. Confirm consent, checkout and tracking before publishing. Regenerate the plan to save changes.</p>
         </div>
         {project.selected_product && (
           <p className="mt-3 text-xs text-muted">

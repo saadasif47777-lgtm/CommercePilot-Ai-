@@ -211,6 +211,41 @@ def get_project(project_id: str) -> dict:
     return _project_or_404(project_id)
 
 
+@app.post("/api/projects/{project_id}/market-intelligence")
+def market_intelligence(project_id: str) -> dict:
+    from .schemas import utcnow
+    from .tools.web_search import search
+    project = _project_or_404(project_id)
+    brief = project["brief"]
+    query = f"{brief.get('niche', '')} {brief.get('target_market', '')} independent brands products shop"
+    outcome = search(query, limit=8)
+    sources = [{"title": row.title, "url": row.url, "snippet": row.snippet}
+               for row in outcome.results if row.url.startswith("https://")][:8]
+    if not sources:
+        raise HTTPException(503, outcome.warning or "No live sources found. Refine your niche or retry later.")
+    from pydantic import BaseModel, Field
+    class Recommendation(BaseModel):
+        suggestion: str = Field(max_length=500)
+        evidence: str = Field(max_length=500)
+        source_index: int = Field(ge=0, lt=len(sources))
+    class Recommendations(BaseModel):
+        recommendations: list[Recommendation] = Field(max_length=4)
+    import json
+    review = ai.complete_json(prompt_name="market_review", schema=Recommendations,
+                              user=ai.wrap_untrusted("research", json.dumps({"brief": brief, "sources": sources}), 30000),
+                              max_tokens=1200, timeout=20, retries=0)
+    result = {"query": query, "checked_at": utcnow(), "provider": outcome.provider,
+              "recommendations": review.model_dump()["recommendations"] if review else [],
+              "sources": sources, "warning": outcome.warning,
+              "review_steps": ["Compare product positioning and visible price points in these sources.",
+                               "Review photography, product detail, delivery and return information on each brand site.",
+                               "Choose one evidence-backed difference for your audience; validate supplier costs before advertising."],
+              "limitations": "Search snippets are discovery evidence, not verified demand, sales, supplier quotes or a full website audit."}
+    project["market_intelligence"] = result
+    get_store().save(project)
+    return result
+
+
 @app.delete("/api/projects/{project_id}")
 def delete_project(project_id: str) -> dict:
     if not _store().delete(project_id):

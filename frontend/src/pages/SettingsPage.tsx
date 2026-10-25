@@ -21,6 +21,7 @@ export function SettingsPage() {
     <PageHeader title="Connections & AI" body="Connect the accounts you use. Credentials are sent securely to your server and never returned to this page." actions={<Link to="/business"><Button variant="secondary">Business information</Button></Link>} />
     {error && <ErrorBanner message={error} onDismiss={clearError} />}
     {message && <div role="status" className="mb-5 rounded-lg border border-line bg-paper p-4 text-sm">{message}</div>}
+    <Card className="mb-5"><SectionTitle title="Connect your workspace" subtitle="Complete setup in order, then use the verification controls to confirm each connection." /><ol className="grid list-decimal gap-3 pl-5 text-sm sm:grid-cols-3"><li><strong>AI & database</strong><p className="mt-1 text-muted">Verify the model request and confirm PostgreSQL is connected.</p></li><li><strong>Shopify knowledge</strong><p className="mt-1 text-muted">Connect your store, load the catalog, then sync products and policies in Customer Support.</p></li><li><strong>Meta reporting</strong><p className="mt-1 text-muted">Use an ads_read token for the correct account. Campaign plans remain drafts for review.</p></li></ol></Card>
     <div className="grid items-start gap-5 lg:grid-cols-2">
       <Card>
         <SectionTitle title="AI generation" right={<ConnectionBadge status={integrations?.llm.status} />} />

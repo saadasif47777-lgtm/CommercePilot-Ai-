@@ -12,6 +12,7 @@ import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, Input, PageHeader, SectionTitle, Select, SkeletonCards, WarningList } from '../components/ui'
 import { ProductCard, ProductTable } from '../components/ProductCards'
 import type { Product } from '../types'
+import { MarketResearch } from '../components/MarketResearch'
 
 const CATEGORIES = ['', 'skincare', 'home accessories', 'fashion accessories', 'fitness', 'electronics accessories']
 // Sort keys exposed in the UI; `score` is the backend's weighted rank.
@@ -162,6 +163,12 @@ export function ProductHunterPage() {
       />
 
       {(error || localError) && <ErrorBanner message={localError ?? error ?? ''} onDismiss={() => { setLocalError(null); clearError() }} />}
+      <Card className="mb-5">
+        <SectionTitle title="Your product library" subtitle="Saved to this project's database. Save candidates to compare; select one to use in your storefront, campaign and analytics." />
+        <div className="grid gap-3 sm:grid-cols-2">{(project?.saved_products ?? []).map(p => <div key={p.id} className="rounded-lg border border-line p-3"><p className="font-semibold">{p.title}</p><p className="mt-1 text-xs text-muted">{p.source} · {p.currency} {p.observed_price ?? 'price needs confirmation'}</p>{p.source_url && <a className="mt-2 block text-sm text-brand underline" href={p.source_url} target="_blank" rel="noopener noreferrer">View original source ↗</a>}<Button size="sm" variant="secondary" disabled={!!busy} onClick={() => select(p.id)} className="mt-3">{project?.selected_product?.id === p.id ? 'Currently selected' : 'Use this product'}</Button></div>)}</div>
+        {!project?.saved_products?.length && <p className="text-sm text-muted">No saved candidates yet. Use “Save to compare” on a result below. The active product is separate from this saved collection.</p>}
+      </Card>
+      <details className="mb-5 rounded-xl border border-line bg-paper p-4"><summary className="cursor-pointer font-semibold">How research sources and ranking work</summary><p className="mt-2 text-sm text-muted">Live search discovers public listings and preserves their original links. A listing is not proof of demand, sales or supplier reliability. Confirm currency, product details and supplier cost before selection. Shopify and manually entered products are labelled separately. Saved candidates remain in your library when you run a new search.</p><MarketResearch /></details>
 
       {/* ------------------------------------------------------------ inputs */}
       <Card className="mb-5">

@@ -71,6 +71,19 @@ def test_valid_output_is_validated_and_logged(ai, monkeypatch):
     assert summary["est_cost_usd"] > 0
 
 
+def test_schema_is_included_on_first_request(ai, monkeypatch):
+    payloads = []
+
+    def post(url, headers, payload, timeout):
+        payloads.append(payload)
+        return _ok()
+
+    monkeypatch.setattr(ai_client, "_post", post)
+    _call()
+    assert len(payloads) == 1
+    assert json.dumps(AssistantIntent.model_json_schema(), separators=(",", ":")) in payloads[0]["messages"][0]["content"]
+
+
 @pytest.mark.parametrize("provider,model,is_reasoning", [
     ("groq", "openai/gpt-oss-20b", True),
     ("groq", "openai/gpt-oss-120b", True),

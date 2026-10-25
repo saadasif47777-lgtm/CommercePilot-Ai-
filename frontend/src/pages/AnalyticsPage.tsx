@@ -88,6 +88,14 @@ export function AnalyticsPage() {
           </Button>
         }
       />
+      <Card className="mb-5">
+        <SectionTitle title="Complete your measurement setup" subtitle="Profitability and campaign performance use different evidence. Work through these inputs to unlock each metric." />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <a href="/products" className="rounded-lg border border-line p-4 text-sm"><strong>1. Product economics</strong><p className="mt-2 text-muted">Confirm selling price and supplier cost to calculate gross profit, margin and gross break-even ROAS.</p></a>
+          <a href="#measurement-inputs" className="rounded-lg border border-line p-4 text-sm"><strong>2. Operating costs</strong><p className="mt-2 text-muted">Enter shipping, packaging, payment fees and fixed costs below for contribution and break-even units.</p></a>
+          <a href="/settings" className="rounded-lg border border-line p-4 text-sm"><strong>3. Measured results</strong><p className="mt-2 text-muted">Connect Meta for account reporting, then enter results from the matching campaign and period below. CPA needs spend and conversions; ROAS needs spend and revenue.</p></a>
+        </div>
+      </Card>
       {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
       {!project.selected_product ? (
@@ -127,7 +135,7 @@ export function AnalyticsPage() {
           {/* Optional inputs: real campaign numbers (for measured KPIs) and
               per-unit overheads (for contribution economics and break-even
               units). Everything is optional; blank means "not provided". */}
-          <Card>
+          <div id="measurement-inputs"><Card>
             <SectionTitle
               title="Actuals & overheads"
               subtitle="Optional. Real ad-account numbers turn CPA and conversion rate from assumptions into measurements; overheads unlock contribution margin and break-even units."
@@ -154,7 +162,7 @@ export function AnalyticsPage() {
                 </div>
               </div>
             </div>
-          </Card>
+          </Card></div>
 
           {(() => {
             const contrib = analysis?.contribution_economics as Record<string, unknown> | undefined
