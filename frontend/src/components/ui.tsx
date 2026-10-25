@@ -27,9 +27,9 @@ export function Badge({
     blue: 'bg-sky-50 text-sky-800 border-sky-200',
   }
   return (
-    <span className={`inline-flex max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 tracking-wide ${tones[tone]}`}>
-      {pulse && <span className="dot-pulse h-1.5 w-1.5 rounded-full bg-current" />}
-      {children}
+    <span data-ui="badge" className={`inline-flex w-fit max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-left text-[11px] font-medium leading-5 tracking-wide ${tones[tone]}`}>
+      {pulse && <span className="dot-pulse h-1.5 w-1.5 shrink-0 rounded-full bg-current" />}
+      <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">{children}</span>
     </span>
   )
 }

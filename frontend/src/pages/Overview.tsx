@@ -245,7 +245,7 @@ function ProjectTile({ id, name, updated, steps, example }: { id: string; name: 
   const done = Object.values(steps).filter((s) => s === 'success').length
   return (
     <button onClick={() => selectProject(id)} className="rounded-xl border border-line bg-paper p-4 text-left shadow-soft transition-shadow hover:shadow-lift">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ink">{name}</p>
         {example && <Badge tone="amber">example</Badge>}
       </div>
@@ -258,7 +258,7 @@ function IntegrationMini({ name, status, note }: { name: string; status: string;
   const connected = status === 'connected'
   return (
     <div className="rounded-xl border border-line bg-paper p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13px] font-semibold text-ink">{name}</p>
         {connected ? <Badge tone="green" pulse>connected</Badge> : <Badge tone="neutral">{status === 'configured_unverified' ? 'needs verification' : 'not connected'}</Badge>}
       </div>

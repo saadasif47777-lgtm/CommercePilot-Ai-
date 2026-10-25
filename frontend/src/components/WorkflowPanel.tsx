@@ -28,23 +28,23 @@ const STEP_ACTIONS: Record<string, string> = {
 function StepIcon({ status }: { status: StepState['status'] }) {
   if (status === 'success')
     return (
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/15 text-accent-dark">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent-dark">
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </span>
     )
   if (status === 'error')
     return (
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-danger">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-100 text-danger">
         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3"><path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" /></svg>
       </span>
     )
   if (status === 'running' || status === 'waiting')
     return (
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
         <span className="dot-pulse h-2 w-2 rounded-full bg-brand" />
       </span>
     )
-  return <span className="flex h-6 w-6 items-center justify-center rounded-full border border-line bg-paper text-[11px] text-muted">{STEP_ORDER.indexOf(status as string) >= 0 ? '' : '·'}</span>
+  return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line bg-paper text-[11px] text-muted">{STEP_ORDER.indexOf(status as string) >= 0 ? '' : '·'}</span>
 }
 
 // Compact mode is used in the assistant sidebar; the full mode has room for
@@ -172,14 +172,14 @@ export function ExecutionTimeline({ limit = 8 }: { limit?: number }) {
   return (
     <div className="space-y-2.5">
       {rows.map((e) => (
-        <div key={e.id} className="flex items-start gap-3 text-sm">
-          <span className="mt-0.5">
+        <div key={e.id} data-testid="execution-row" className="grid grid-cols-1 items-start gap-x-3 gap-y-1 text-sm sm:grid-cols-[5.5rem_minmax(0,1fr)]">
+          <div data-testid="execution-status" className="mt-0.5 w-fit max-w-full">
             {e.status === 'success' && <Badge tone="green">success</Badge>}
             {e.status === 'error' && <Badge tone="red">error</Badge>}
             {e.status === 'skipped' && <Badge tone="neutral">skipped</Badge>}
             {e.status === 'running' && <Badge tone="amber" pulse>running</Badge>}
-          </span>
-          <div className="min-w-0">
+          </div>
+          <div data-testid="execution-content" className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
             <p className="font-medium text-ink">{e.agent}</p>
             {e.input_summary && <p className="text-xs text-muted">in: {e.input_summary}</p>}
             {e.output_summary && <p className="text-xs text-muted">out: {e.output_summary}</p>}
@@ -199,8 +199,8 @@ export function ExecutionTimeline({ limit = 8 }: { limit?: number }) {
 export function WorkflowErrorCard({ error }: { error: { step: string; message: string } }) {
   return (
     <Card className="border-red-200 bg-red-50/50">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-[240px]">
           <p className="text-sm font-semibold text-danger">Workflow stopped at: {error.step}</p>
           <p className="mt-1 text-sm text-danger/90">{error.message}</p>
           <p className="mt-2 text-xs text-muted">Earlier steps keep their results — retry just this step below.</p>
