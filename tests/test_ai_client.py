@@ -71,6 +71,44 @@ def test_valid_output_is_validated_and_logged(ai, monkeypatch):
     assert summary["est_cost_usd"] > 0
 
 
+@pytest.mark.parametrize("provider,model,is_reasoning", [
+    ("groq", "openai/gpt-oss-20b", True),
+    ("groq", "openai/gpt-oss-120b", True),
+    ("openai", "other-model", False),
+    ("groq", "other-model", False),
+])
+def test_reasoning_budget_preserves_visible_answer_allowance(ai, monkeypatch, provider, model, is_reasoning):
+    monkeypatch.setattr(config, "LLM_PROVIDER", provider)
+    monkeypatch.setattr(config, "LLM_MODEL", model)
+    payloads = []
+
+    def post(url, headers, payload, timeout):
+        payloads.append(payload)
+        return _ok()
+
+    monkeypatch.setattr(ai_client, "_post", post)
+    _call()
+    payload = payloads[0]
+    if is_reasoning:
+        assert payload["max_completion_tokens"] == 2248
+        assert payload["reasoning_effort"] == "low"
+        assert "max_tokens" not in payload
+    else:
+        assert payload["max_tokens"] == 200
+        assert "reasoning_effort" not in payload
+
+
+def test_provider_diagnostics_never_log_raw_message(ai, monkeypatch, caplog):
+    monkeypatch.setattr(ai_client, "_post", lambda *a: _Resp(400, {
+        "error": {"code": "json_validate_failed", "message": "private customer input", "failed_generation": "secret"}
+    }))
+    with pytest.raises(AIRequestError):
+        _call()
+    assert "json_validate_failed" in caplog.text
+    assert "private customer input" not in caplog.text
+    assert "secret" not in caplog.text
+
+
 def test_retries_on_429_then_succeeds(ai, monkeypatch):
     calls = {"n": 0}
 

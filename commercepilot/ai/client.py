@@ -220,6 +220,11 @@ def _call(
     }
     if as_json:
         payload["response_format"] = {"type": "json_object"}
+    if _provider() == "groq" and model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
+        # Groq counts reasoning against the completion limit as well. Reserving
+        # only the visible-answer allowance can truncate JSON before it starts.
+        payload["reasoning_effort"] = "low"
+        payload["max_completion_tokens"] = payload.pop("max_tokens") + 2048
 
     headers = {
         "Authorization": f"Bearer {config.LLM_API_KEY}",
@@ -279,6 +284,17 @@ def _call(
             raise AIRequestError("AI service is rate limited or unavailable right now.")
 
         _record(prompt_name, 0, 0, latency, f"failed_{resp.status_code}", model)
+        # Log only allowlisted error codes, never provider messages or generated
+        # content (which can contain customer input or credentials).
+        try:
+            error_code = resp.json().get("error", {}).get("code")
+        except (ValueError, AttributeError, TypeError):
+            error_code = None
+        safe_code = error_code if error_code in {
+            "json_validate_failed", "model_not_found", "model_decommissioned",
+            "invalid_api_key", "context_length_exceeded", "model_permission_blocked",
+        } else "unclassified"
+        logger.warning("AI provider rejected request: status=%s code=%s", resp.status_code, safe_code)
         raise AIRequestError("AI request was rejected by the provider.")
 
     raise AIRequestError("AI request failed after retries.")
