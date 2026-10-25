@@ -1,5 +1,45 @@
 import { test, expect } from '@playwright/test'
 
+test('text, product metrics and actions remain aligned at mobile tablet and desktop widths', async ({ page, request }) => {
+  const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'Alignment QA', niche: 'lighting', budget: 10000 } } })).json()
+  for (const title of ['Desk lamp', 'Handcrafted adjustable desk lighting for a comfortable reading corner', 'Ceramic lamp']) {
+    await request.post(`/api/projects/${created.id}/products/manual`, { data: { title, observed_price: 3250, observed_cost: 1200 } })
+  }
+  const populated = await (await request.get(`/api/projects/${created.id}`)).json()
+  populated.research.products = populated.research.products.map((p: Record<string, unknown>, i: number) => ({ ...p, source: 'live', page_kind: 'product', score: 9.5, page_checked_at: '2026-10-25T10:00:00Z', price_source: 'product structured offer', description: i === 0 ? '' : 'Product details with longer text to exercise wrapping and consistent card alignment.', extraction_note: i === 1 ? 'Confirm the selected variant and supplier quote before use.' : '', source_url: 'https://brand.example/products/lamp' }))
+  await page.route(`**/api/projects/${created.id}`, route => route.fulfill({ json: populated }))
+  await page.reload()
+  await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
+  await expect(page.getByRole('heading', { name: 'Alignment QA', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Product Hunter', exact: true }).click()
+  await expect(page.getByTestId('product-card')).toHaveCount(3)
+  for (const width of [390, 768, 1280, 1600]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+    const cards = await page.getByTestId('product-card').evaluateAll(elements => elements.map(card => ({
+      top: card.getBoundingClientRect().top,
+      metrics: card.querySelector('[data-testid="product-metrics"]')!.getBoundingClientRect().top,
+      actions: card.querySelector('[data-testid="product-actions"]')!.getBoundingClientRect().top,
+      scoreHeight: card.querySelector('[data-testid="product-score"] span')!.getBoundingClientRect().height,
+    })))
+    for (const card of cards) expect(card.scoreHeight).toBeLessThanOrEqual(24)
+    for (let i = 1; i < cards.length; i++) {
+      if (Math.abs(cards[i].top - cards[i - 1].top) < 2) {
+        expect(Math.abs(cards[i].metrics - cards[i - 1].metrics)).toBeLessThan(2)
+        expect(Math.abs(cards[i].actions - cards[i - 1].actions)).toBeLessThan(2)
+      }
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const fields = [page.getByLabel(/^Niche/), page.getByLabel('Research source', { exact: true }), page.getByLabel('Price PKR min', { exact: true }), page.getByLabel('Price max', { exact: true })]
+  const boxes = await Promise.all(fields.map(field => field.boundingBox()))
+  for (const box of boxes) {
+    expect(box).not.toBeNull()
+    expect(Math.abs(box!.y - boxes[0]!.y)).toBeLessThan(2)
+    expect(Math.abs(box!.height - 40)).toBeLessThan(2)
+  }
+})
+
 test('imports an individual product URL and persists its page provenance in the library', async ({ page, request }) => {
   const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'URL research QA', niche: 'lamps', budget: 10000 } } })).json()
   await page.reload()

@@ -25,8 +25,8 @@ export function SourceBadge({ product }: { product: Product }) {
 export function ScoreBar({ score }: { score: number | null }) {
   if (score === null) return <span className="text-xs text-muted">Needs evidence before scoring</span>
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-mist-2">
+    <div className="inline-flex shrink-0 items-center gap-2" data-testid="product-score">
+      <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-mist-2">
         <motion.div
           className="h-full rounded-full bg-accent"
           initial={{ width: 0 }}
@@ -34,7 +34,7 @@ export function ScoreBar({ score }: { score: number | null }) {
           transition={{ duration: 0.6, ease: 'easeOut' }}
         />
       </div>
-      <span className="text-sm font-semibold tabular-nums text-ink">{score.toFixed(1)}</span>
+      <span className="shrink-0 whitespace-nowrap text-sm font-semibold leading-5 tabular-nums text-ink">{score.toFixed(1)}</span>
     </div>
   )
 }
@@ -104,47 +104,49 @@ export function ProductCard({
   return (
     <motion.div
       layout
-      className={`flex flex-col rounded-xl border bg-paper p-4 transition-shadow ${
+      data-testid="product-card"
+      className={`product-card flex flex-col rounded-xl border bg-paper p-4 transition-shadow ${
         selected ? 'border-accent shadow-lift' : 'border-line shadow-soft hover:shadow-lift'
       }`}
     >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div>
           <Badge tone="ink">{product.category}</Badge>
-          <SourceBadge product={product} />
         </div>
         <Badge tone={product.confidence === 'high' ? 'green' : product.confidence === 'medium' ? 'amber' : 'neutral'}>
           {product.confidence} confidence
         </Badge>
       </div>
+      <div className="mb-3"><SourceBadge product={product} /></div>
 
-      <h3 className="font-display text-[15px] font-semibold leading-snug text-ink">{product.title}</h3>
-      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{product.description}</p>
-      {product.source === 'live' && <div className="mt-3 rounded-lg bg-mist p-3 text-xs text-muted"><p>{product.page_kind === 'product' ? 'Individual product identified; source details still need business review.' : 'Discovery candidate — confirm an individual product before using these details.'}</p><p className="mt-1">Price evidence: {product.price_source || 'search listing only'}</p>{product.page_checked_at && <p className="mt-1">Checked {new Date(product.page_checked_at).toLocaleString()} · Availability: {product.availability || 'not provided'}</p>}{product.extraction_note && <p className="mt-1">{product.extraction_note}</p>}{product.currency && product.currency !== currency && <p className="mt-1 font-semibold text-warn">Source is in {product.currency}; your business uses {currency}. Confirm a selling price in your business currency.</p>}</div>}
+      <h3 title={product.title} className="product-card-title line-clamp-2 font-display text-base font-semibold leading-snug text-ink">{product.title}</h3>
+      <p className="product-card-description mt-2 line-clamp-2 text-xs leading-relaxed text-muted">{product.description}</p>
+      {product.source === 'live' && <div className="product-card-evidence mt-3 rounded-lg bg-mist p-3 text-xs leading-relaxed text-muted"><p>{product.page_kind === 'product' ? 'Individual product identified; source details still need business review.' : 'Discovery candidate — confirm an individual product before using these details.'}</p><p className="mt-2">Price evidence: {product.price_source || 'search listing only'}</p>{product.page_checked_at && <p className="mt-2">Checked {new Date(product.page_checked_at).toLocaleString()} · Availability: {product.availability || 'not provided'}</p>}{product.extraction_note && <p className="mt-2">{product.extraction_note}</p>}{product.currency && product.currency !== currency && <p className="mt-2 font-semibold text-warn">Source is in {product.currency}; your business uses {currency}. Confirm a selling price in your business currency.</p>}</div>}
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-        <div>
+      {product.source !== 'live' && <div className="product-card-evidence mt-3 rounded-lg bg-mist p-3 text-xs leading-relaxed text-muted"><p>{product.source === 'manual' ? 'Product details and economics supplied by you.' : 'Review the original source and confirm the product details.'}</p><p className="mt-2">Confirm your supplier quote, selling price and operating costs before planning a campaign.</p></div>}
+      <div className="product-card-metrics mt-4 grid grid-cols-3 gap-3 text-xs" data-testid="product-metrics">
+        <div className="product-metric">
           <p className="text-muted">Price</p>
-          <p className="font-semibold text-ink">{money(product.observed_price, product.currency ?? currency)}</p>
+          <p className="product-metric-value whitespace-nowrap font-semibold tabular-nums text-ink">{money(product.observed_price, product.currency ?? currency)}</p>
         </div>
-        <div>
+        <div className="product-metric">
           <p className="text-muted">Your unit cost</p>
           <p className="font-semibold text-ink">{product.observed_cost != null ? money(product.observed_cost, currency) : product.estimated_cost != null ? money(product.estimated_cost, currency) : 'Add supplier quote'}</p>
         </div>
-        <div>
+        <div className="product-metric">
           <p className="text-muted">Margin</p>
           <p className="font-semibold text-ink">{product.margin_pct !== null ? `${product.margin_pct.toFixed(0)}%` : 'Confirm price & cost'}</p>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <ScoreBar score={product.score} />
-        <span className="text-[11px] capitalize text-muted">
+      <div className="product-card-ranking mt-4 space-y-2 border-t border-line pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-muted">Evidence-weighted rank</span><ScoreBar score={product.score} /></div>
+        <p className="text-xs leading-relaxed text-muted">
           {product.demand_level ? `demand ${product.demand_level}` : 'Sales demand unverified'} · {product.competition === 'unknown' ? 'competition needs research' : `competition ${product.competition}`}
-        </span>
+        </p>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2" data-testid="product-actions">
         {onSelect && (
           <Button size="sm" variant={selected ? 'accent' : 'primary'} onClick={onSelect}>
             {selected ? 'Selected ✓' : 'Add to Project'}
@@ -168,11 +170,12 @@ export function ProductCard({
             href={product.source_url}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand underline-offset-2 hover:underline"
+            className="col-span-2 inline-flex min-h-9 items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand underline-offset-2 hover:underline"
           >
             Source ↗
           </a>
         )}
+        {!product.source_url && <span className="col-span-2 inline-flex min-h-9 items-center justify-center text-xs text-muted">User-provided product</span>}
       </div>
 
       <AnimatePresence>
