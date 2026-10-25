@@ -190,16 +190,16 @@ export function ProductHunterPage() {
             <Input type="number" min={0} value={priceMax} placeholder={brief?.preferred_price_max ? String(brief.preferred_price_max) : 'any'} onChange={(e) => setPriceMax(e.target.value)} />
           </Field>
         </div>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-[240px] flex-1">
+        <div className="mt-3 grid grid-cols-2 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <div className="col-span-2 min-w-0 sm:col-span-1">
             <Field label="Constraints (comma separated)" hint='e.g. "no electronics, no bulky"'>
               <Input value={constraints} placeholder="optional" onChange={(e) => setConstraints(e.target.value)} />
             </Field>
           </div>
-          <Button busy={busy === 'research'} onClick={search} disabled={!project || !!busy}>
+          <Button className="self-stretch sm:mt-[2.4rem] sm:self-start" busy={busy === 'research'} onClick={search} disabled={!project || !!busy}>
             {research ? 'Re-run research' : 'Run Product Hunter'}
           </Button>
-          <Button variant="secondary" disabled={!project} onClick={() => setManualOpen((o) => !o)}>
+          <Button className="self-stretch sm:mt-[2.4rem] sm:self-start" variant="secondary" disabled={!project} onClick={() => setManualOpen((o) => !o)}>
             {manualOpen ? 'Close' : 'Enter product manually'}
           </Button>
         </div>
