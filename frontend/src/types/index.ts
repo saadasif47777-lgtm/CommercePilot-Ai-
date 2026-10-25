@@ -15,6 +15,11 @@ export interface ScoreFactor {
 }
 
 export interface Product {
+  page_kind?: 'not_checked' | 'product' | 'collection' | 'needs_review'
+  price_source?: string
+  page_checked_at?: string | null
+  extraction_note?: string
+  availability?: string
   id: string
   title: string
   description: string
@@ -44,6 +49,7 @@ export interface Product {
 }
 
 export interface ResearchRequest {
+  currency?: string
   niche?: string
   market?: string
   audience?: string

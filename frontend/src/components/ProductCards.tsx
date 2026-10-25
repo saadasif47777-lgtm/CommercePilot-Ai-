@@ -14,6 +14,8 @@ export function money(value: number | null | undefined, currency = 'PKR'): strin
 
 // Provenance is always visible: sample vs live web vs merged.
 export function SourceBadge({ product }: { product: Product }) {
+  if (product.page_kind === 'product') return <Badge tone="green">product page inspected</Badge>
+  if (product.page_kind === 'collection') return <Badge tone="neutral">collection source</Badge>
   if (product.source === 'live') return <Badge tone="blue">live web result</Badge>
   if (product.source === 'manual') return <Badge tone="blue">your product</Badge>
   if (product.source === 'merged') return <Badge tone="blue">merged (sample + live)</Badge>
@@ -21,7 +23,7 @@ export function SourceBadge({ product }: { product: Product }) {
 }
 
 export function ScoreBar({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-xs text-muted">not scored</span>
+  if (score === null) return <span className="text-xs text-muted">Needs evidence before scoring</span>
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-mist-2">
@@ -118,6 +120,7 @@ export function ProductCard({
 
       <h3 className="font-display text-[15px] font-semibold leading-snug text-ink">{product.title}</h3>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{product.description}</p>
+      {product.source === 'live' && <div className="mt-3 rounded-lg bg-mist p-3 text-xs text-muted"><p>{product.page_kind === 'product' ? 'Individual product identified; source details still need business review.' : 'Discovery candidate — confirm an individual product before using these details.'}</p><p className="mt-1">Price evidence: {product.price_source || 'search listing only'}</p>{product.page_checked_at && <p className="mt-1">Checked {new Date(product.page_checked_at).toLocaleString()} · Availability: {product.availability || 'not provided'}</p>}{product.extraction_note && <p className="mt-1">{product.extraction_note}</p>}{product.currency && product.currency !== currency && <p className="mt-1 font-semibold text-warn">Source is in {product.currency}; your business uses {currency}. Confirm a selling price in your business currency.</p>}</div>}
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
         <div>
@@ -125,19 +128,19 @@ export function ProductCard({
           <p className="font-semibold text-ink">{money(product.observed_price, product.currency ?? currency)}</p>
         </div>
         <div>
-          <p className="text-muted">Est. cost</p>
-          <p className="font-semibold text-ink">{product.estimated_cost ? money(product.estimated_cost, currency) : 'unknown'}</p>
+          <p className="text-muted">Your unit cost</p>
+          <p className="font-semibold text-ink">{product.observed_cost != null ? money(product.observed_cost, currency) : product.estimated_cost != null ? money(product.estimated_cost, currency) : 'Add supplier quote'}</p>
         </div>
         <div>
           <p className="text-muted">Margin</p>
-          <p className="font-semibold text-ink">{product.margin_pct !== null ? `${product.margin_pct.toFixed(0)}%` : 'unknown'}</p>
+          <p className="font-semibold text-ink">{product.margin_pct !== null ? `${product.margin_pct.toFixed(0)}%` : 'Confirm price & cost'}</p>
         </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between">
         <ScoreBar score={product.score} />
         <span className="text-[11px] capitalize text-muted">
-          demand {product.demand_level ?? 'unknown'} · competition {product.competition}
+          {product.demand_level ? `demand ${product.demand_level}` : 'Sales demand unverified'} · {product.competition === 'unknown' ? 'competition needs research' : `competition ${product.competition}`}
         </span>
       </div>
 

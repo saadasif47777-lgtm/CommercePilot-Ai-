@@ -32,8 +32,10 @@ from ..schemas import (
     ResearchRequest,
     ResearchResult,
     ScoreFactor,
+    utcnow,
 )
 from ..tools import calculations as calc
+from ..tools.product_pages import PageFacts, inspect_pages
 from ..tools.web_search import SearchResult, search
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_products.json"
@@ -157,6 +159,12 @@ def _live_product(result: SearchResult, index: int) -> Product:
     price, currency = parse_price(f"{result.title} {result.snippet}")
     text = f"{result.title} {result.snippet}"
     category = guess_category(text)
+    url = result.url.lower()
+    collection = bool(re.search(r"/(?:collections|categories|category|catalog|search|items)(?:/|\?|$)|[?&]q=", url))
+    if "daraz.pk/" in url and not re.search(r"-i\d+.*\.html", url):
+        collection = True
+    if "olx.pk/" in url and "/item/" not in url:
+        collection = True
     signals = [
         DemandSignal(
             label="Live search result",
@@ -172,6 +180,8 @@ def _live_product(result: SearchResult, index: int) -> Product:
         source="live",
         source_url=result.url,
         observed_price=price,
+        price_source="search snippet — confirm on source" if price else "not provided",
+        page_kind="collection" if collection else "not_checked",
         currency=currency,
         estimated_cost=None,  # unknown - never invented
         demand_level=None,  # unknown - a search hit is not demand evidence
@@ -181,6 +191,26 @@ def _live_product(result: SearchResult, index: int) -> Product:
         price_suitability=None,
         is_sample_data=False,
     )
+
+
+def enrich_product(product: Product, facts: PageFacts) -> Product:
+    product.page_kind = "collection" if product.page_kind == "collection" and facts.kind == "needs_review" else facts.kind
+    product.page_checked_at = utcnow()
+    product.extraction_note = facts.note
+    product.availability = facts.availability
+    if facts.kind == "product":
+        product.title = facts.title or product.title
+        product.description = facts.description or product.description
+        product.observed_price = facts.price
+        product.currency = facts.currency
+        product.price_source = facts.price_basis
+        product.source_url = facts.url
+        product.category = guess_category(product.title + " " + product.description)
+        product.demand_signals.append(DemandSignal(label="Product page inspected", value=facts.price_basis, evidence=facts.url))
+    elif product.page_kind == "collection":
+        product.observed_price, product.currency = None, None
+        product.price_source = "collection has no single product price"
+    return product
 
 
 # --------------------------------------------------------------------------- #
@@ -258,6 +288,8 @@ def score_product(
         "audience_fit": _audience_score(product, audience_keywords),
         "price_suitability": _price_score(product, price_min, price_max),
     }
+    if product.page_kind == "collection":
+        raw_scores = dict.fromkeys(raw_scores)
 
     w = dict(DEFAULT_WEIGHTS)
     if weights:
@@ -442,7 +474,7 @@ def _matches_constraints(product: Product, constraints: list[str]) -> bool:
 
 
 def _build_query(req: ResearchRequest) -> str:
-    parts = [req.niche or "product", "trending product"]
+    parts = [req.niche or "product", "product price"]
     if req.market:
         parts.append(req.market)
     if req.price_min is not None and req.price_max is not None:
@@ -485,6 +517,16 @@ def run(req: ResearchRequest) -> ResearchResult:
         if outcome.results:
             contains_live = True
             live_products = [_live_product(r, i + 1) for i, r in enumerate(outcome.results)]
+            # Inspect four sources, then up to four same-site product links
+            # discovered on collections. This is bounded, not a recursive crawl.
+            facts = inspect_pages([p.source_url for p in live_products[:4]])
+            for product, page in zip(live_products, facts, strict=False):
+                enrich_product(product, page)
+            children = list(dict.fromkeys(link for page in facts if page.kind == "collection" for link in page.links[:2]))[:4]
+            existing_urls = {p.source_url for p in live_products}
+            for page in inspect_pages([link for link in children if link not in existing_urls]):
+                if page.kind == "product":
+                    live_products.append(enrich_product(_live_product(SearchResult(page.title, page.url, page.description), 0), page))
             domains = sorted({_domain(r.url) for r in outcome.results if _domain(r.url)})
             sources.extend(domains)
             # A real, verifiable observation about the result set (not a demand score).
@@ -510,15 +552,16 @@ def run(req: ResearchRequest) -> ResearchResult:
     for product in candidates:
         if not _matches_constraints(product, req.constraints):
             continue
-        if (
-            product.observed_price is not None
+        compatible = not req.currency or product.currency == req.currency
+        if (compatible
+            and product.observed_price is not None
             and req.price_min is not None
             and product.observed_price < req.price_min
         ):
             dropped_price += 1
             continue
-        if (
-            product.observed_price is not None
+        if (compatible
+            and product.observed_price is not None
             and req.price_max is not None
             and product.observed_price > req.price_max
         ):
@@ -530,9 +573,12 @@ def run(req: ResearchRequest) -> ResearchResult:
 
     merged = _dedupe(filtered)
     scored = [
-        score_product(p, audience_kw, req.price_min, req.price_max, req.weights) for p in merged
+        score_product(p, audience_kw,
+                      req.price_min if not req.currency or p.currency == req.currency else None,
+                      req.price_max if not req.currency or p.currency == req.currency else None,
+                      req.weights) for p in merged
     ]
-    scored.sort(key=lambda p: (p.score is None, -(p.score or 0)))
+    scored.sort(key=lambda p: (p.page_kind == "collection", p.page_kind != "product", p.score is None, -(p.score or 0)))
 
     if req.mode == "both":
         # Keep live web results visible in the merged ranking. Score order is
@@ -553,15 +599,19 @@ def run(req: ResearchRequest) -> ResearchResult:
     unknown_priced = sum(1 for p in scored if p.observed_price is None)
     if unknown_priced:
         warnings.append(
-            f"{unknown_priced} live result(s) had no detectable price - price and margin marked unknown."
+            f"{unknown_priced} result(s) need price confirmation. Open an individual product link or import your catalog."
         )
     # "Sample" means no live evidence reached the final result set.
     is_sample = (req.mode != "live" and all(p.is_sample_data for p in scored)) or not contains_live
     if contains_live:
         warnings.append(
-            "Live results are raw web-search listings: cost, demand and competition are unknown "
-            "and were left unknown rather than estimated."
+            "Product pages are inspected where permitted. Collection pages are discovery sources, not products. "
+            "Prices are source observations, not supplier quotes. Enter your own cost to calculate margin; sales demand remains unverified."
         )
+        checked = sum(p.page_kind == "product" for p in scored)
+        warnings.append(f"{checked} individual product page(s) identified. Up to eight pages are checked per run; blocked and dynamic pages need manual review.")
+        if req.currency and any(p.observed_price is not None and p.currency != req.currency for p in scored):
+            warnings.append(f"Some prices have another or unconfirmed currency. The {req.currency} price filter and price-fit score were not applied to them; no FX conversion was assumed.")
 
     return ResearchResult(
         mode=req.mode,

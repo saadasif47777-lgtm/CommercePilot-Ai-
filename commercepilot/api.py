@@ -349,6 +349,23 @@ def list_saved_products(project_id: str) -> dict:
     }
 
 
+@app.post("/api/projects/{project_id}/products/from-url")
+def import_product_url(project_id: str, payload: dict = Body(...)) -> dict:
+    from .tools.product_pages import inspect_page
+    from .tools.web_search import SearchResult
+    url = payload.get("url")
+    if not isinstance(url, str) or len(url) > 2000:
+        raise HTTPException(422, "Enter an individual public HTTPS product URL.")
+    project = _project_or_404(project_id)
+    page = inspect_page(url)
+    if page.kind != "product":
+        raise HTTPException(422, page.note or "No individual product found. Open a product detail page, not a collection, or enter the product manually.")
+    product = product_hunter.enrich_product(product_hunter._live_product(SearchResult(page.title, url, page.description), 0), page)
+    request = ResearchRequest(currency=project["brief"].get("currency"), audience=project["brief"].get("target_audience"))
+    product_hunter.score_with_defaults(product, request)
+    return wf.step_save_product(_store(), project, product=product)
+
+
 @app.post("/api/projects/{project_id}/products/{product_id}/save")
 def save_product(project_id: str, product_id: str) -> dict:
     project = _project_or_404(project_id)

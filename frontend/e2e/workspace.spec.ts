@@ -1,5 +1,22 @@
 import { test, expect } from '@playwright/test'
 
+test('imports an individual product URL and persists its page provenance in the library', async ({ page, request }) => {
+  const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'URL research QA', niche: 'lamps', budget: 10000 } } })).json()
+  await page.reload()
+  await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
+  await expect(page.getByRole('heading', { name: 'URL research QA', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Product Hunter', exact: true }).click()
+  await page.getByLabel('Individual product URL', { exact: true }).fill('https://brand.example/products/lamp')
+  await page.getByRole('button', { name: 'Read & save product', exact: true }).click()
+  await expect(page.getByText('Product details saved to your library.', { exact: false })).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Imported URL lamp', { exact: true })).toBeVisible()
+  const saved = await (await request.get(`/api/projects/${created.id}/products/saved`)).json()
+  expect(saved.products[0].price_source).toBe('product structured offer')
+  expect(saved.products[0].observed_price).toBe(3000)
+  expect(saved.products[0].estimated_cost).toBeNull()
+})
+
 test('mobile workspace stays within viewport and campaign delivery choices persist', async ({ page, request }) => {
   const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'Mobile QA', niche: 'lamps', budget: 10000 } } })).json()
   await request.post(`/api/projects/${created.id}/products/manual`, { data: { title: 'Desk lamp', observed_price: 2000, observed_cost: 800 } })
