@@ -32,6 +32,29 @@ def test_project_research_uses_and_saves_exact_query(client, monkeypatch):
     assert project["campaign"] is None
 
 
+def test_live_market_sources_persist_and_empty_search_is_honest(client, monkeypatch):
+    from commercepilot.tools import web_search
+    monkeypatch.setattr(api.ai, "complete_json", lambda **kwargs: None)
+    monkeypatch.setattr(web_search, "search", lambda *a, **k: SearchOutcome(results=[SearchResult("A brand", "https://brand.example", "Handmade lamps")], provider="test"))
+    pid = client.post("/api/projects", json={"brief": {"business_name": "Store", "niche": "lamps"}}).json()["id"]
+    response = client.post(f"/api/projects/{pid}/market-intelligence")
+    assert response.status_code == 200
+    assert client.get(f"/api/projects/{pid}").json()["market_intelligence"]["sources"][0]["url"] == "https://brand.example"
+    monkeypatch.setattr(web_search, "search", lambda *a, **k: SearchOutcome(warning="No live results"))
+    assert client.post(f"/api/projects/{pid}/market-intelligence").status_code == 503
+    assert client.get(f"/api/projects/{pid}").json()["market_intelligence"]["sources"]
+
+
+def test_campaign_targeting_is_validated_and_persisted(client):
+    pid = client.post("/api/projects", json={"brief": {"business_name": "Store", "budget": 1000}}).json()["id"]
+    client.post(f"/api/projects/{pid}/products/manual", json={"title": "Lamp", "observed_price": 200, "observed_cost": 50})
+    payload = {"targeting": {"locations": ["Lahore"], "placements": ["instagram_reels"], "age_min": 22, "age_max": 40, "landing_url": "https://brand.example/lamp"}}
+    assert client.post(f"/api/projects/{pid}/generate-campaign", json=payload).status_code == 200
+    assert client.get(f"/api/projects/{pid}").json()["campaign"]["targeting"]["locations"] == ["Lahore"]
+    payload["targeting"]["age_max"] = 18
+    assert client.post(f"/api/projects/{pid}/generate-campaign", json=payload).status_code == 422
+
+
 def test_economics_updates_selected_product_and_invalidates(client):
     pid = client.post("/api/projects", json={"brief": {"business_name": "Store"}}).json()["id"]
     client.post(f"/api/projects/{pid}/products/manual", json={"title": "Notebook", "observed_price": 200, "observed_cost": 50})

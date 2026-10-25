@@ -1,5 +1,33 @@
 import { test, expect } from '@playwright/test'
 
+test('mobile workspace stays within viewport and campaign delivery choices persist', async ({ page, request }) => {
+  const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'Mobile QA', niche: 'lamps', budget: 10000 } } })).json()
+  await request.post(`/api/projects/${created.id}/products/manual`, { data: { title: 'Desk lamp', observed_price: 2000, observed_cost: 800 } })
+  await page.reload()
+  await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
+  await expect(page.getByRole('heading', { name: 'Mobile QA', exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  for (const route of ['/', '/business', '/products', '/marketing', '/analytics', '/settings', '/support', '/assistant']) {
+    await page.goto(route)
+    await expect(page.locator('main h1')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  }
+  await page.goto('/marketing')
+  await page.getByLabel(/^Target locations/).fill('Lahore, Islamabad')
+  await page.getByLabel(/^Languages/).fill('Urdu, English')
+  await page.getByLabel('Minimum age', { exact: true }).fill('25')
+  await page.getByLabel('Maximum age', { exact: true }).fill('45')
+  const generated = page.waitForResponse(response => response.url().endsWith('/generate-campaign') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: 'Generate campaign plan', exact: true }).click()
+  const response = await generated
+  expect(response.request().postDataJSON().targeting.locations).toEqual(['Lahore', 'Islamabad'])
+  expect((await response.json()).targeting.locations).toEqual(['Lahore', 'Islamabad'])
+  await expect(page.getByText('Creative concepts', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel(/^Target locations/)).toHaveValue('Lahore,Islamabad')
+  await expect(page.getByLabel('Minimum age', { exact: true })).toHaveValue('25')
+})
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Add New Project' }).first()).toBeVisible()

@@ -40,7 +40,7 @@ export function OverviewPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="rounded-2xl border border-line bg-paper p-8 shadow-soft"
+          className="rounded-2xl border border-line bg-paper p-4 sm:p-8 shadow-soft"
         >
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
@@ -57,7 +57,7 @@ export function OverviewPage() {
                 </Button>
                 <Link to="/assistant"><Button size="lg" variant="secondary">Ask AI where to start</Button></Link>
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
                   ['Product Hunter', 'live web research'],
                   ['Store Architect', 'interactive storefront'],
@@ -132,7 +132,7 @@ export function OverviewPage() {
         <motion.div className="h-full rounded-full bg-accent" initial={{ width: 0 }} animate={{ width: `${(doneCount / steps.length) * 100}%` }} transition={{ duration: 0.6 }} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="space-y-5">
           <FadeIn>
             <Card>
@@ -143,7 +143,7 @@ export function OverviewPage() {
               />
               <WorkflowSteps />
               {nextStep && NEXT_LINK[nextStep.id] && (
-                <div className="mt-4 flex items-center gap-2 rounded-lg bg-mist px-4 py-3 text-sm">
+                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-mist px-4 py-3 text-sm">
                   <span className="text-muted">Recommended next action:</span>
                   <Link to={NEXT_LINK[nextStep.id]} className="font-semibold text-brand underline-offset-2 hover:underline">
                     {nextStep.title} →

@@ -324,6 +324,9 @@ def complete_json(
             raise AIConfigError("No AI provider key configured on the server.")
         return None
     system, _version = load_prompt(prompt_name, version)
+    system += "\n\nReturn one JSON object matching this schema. Keep structured fields outside prose strings:\n" + json.dumps(
+        schema.model_json_schema(), separators=(",", ":")
+    )
 
     text = _call(
         system=system,

@@ -40,6 +40,20 @@
 }
 
 html { scroll-behavior: smooth; }
+*, *::before, *::after { box-sizing: border-box; }
+#root, main, section, article, form { min-width: 0; }
+main { overflow-wrap: anywhere; }
+img, video, iframe, svg { max-width: 100%; }
+input, select, textarea { max-width: 100%; min-width: 0; }
+.grid > *, .flex > * { min-width: 0; }
+table { max-width: 100%; }
+@media (max-width: 640px) {
+  h1 { font-size: 1.8rem !important; }
+  main { padding-left: 1rem !important; padding-right: 1rem !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
 body {
   margin: 0;
   background: var(--color-mist);

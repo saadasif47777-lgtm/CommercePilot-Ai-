@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { blankBrief, useProject } from '../state/ProjectContext'
 import type { BusinessBrief } from '../types'
+import { MarketResearch } from '../components/MarketResearch'
 import { Badge, Button, Card, ErrorBanner, Field, Input, PageHeader, Textarea } from '../components/ui'
 
 export function BusinessPage() {
@@ -48,5 +49,6 @@ export function BusinessPage() {
         {!newBusiness && <p className="sm:col-span-2 text-xs text-muted">Changing business information clears outputs based on the previous brief. Regenerate them after saving.</p>}
       </form>
     </Card>
+    {!newBusiness && <MarketResearch />}
   </div>
 }

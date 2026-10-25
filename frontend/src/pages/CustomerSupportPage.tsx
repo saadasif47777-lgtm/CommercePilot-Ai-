@@ -69,7 +69,8 @@ export function CustomerSupportPage() {
     <PageHeader title="Customer support" body="Help shoppers find the right product and understand your store’s policies, directly on Shopify." actions={<Link to="/settings"><Button variant="secondary">Shopify connection</Button></Link>} />
     {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
     {notice && <div role="status" className="mb-5 rounded-xl border border-accent/30 bg-accent/10 p-4 text-sm text-brand">{notice}</div>}
-    <div className="grid items-start gap-5 xl:grid-cols-[1fr_1fr]">
+    <Card className="mb-5"><h2 className="text-lg font-semibold">Shopify launch checklist</h2><ol className="mt-3 grid list-decimal gap-3 pl-5 text-sm sm:grid-cols-2"><li>Connect the brand's myshopify.com domain and Admin API token in Connections & AI. Grant product and legal-policy read access.</li><li>Sync the published catalog and policies below. Check counts and resolve sync errors before continuing.</li><li>Set the assistant name, support contact, welcome message and brand color. Test product, policy and unavailable-answer questions.</li><li>Enable chat, copy the installation code and add it to a Custom Liquid section in the Shopify theme. Verify on desktop and mobile.</li></ol><p className="mt-3 text-xs text-muted">The bot answers from synced knowledge. Personal order requests and missing answers go to your support contact. It does not issue refunds or invent store policies.</p></Card>
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="space-y-5">
         <Card>
           <SectionTitle title="1. Sync store knowledge" right={<Badge tone={status?.ready ? 'green' : 'amber'}>{status?.ready ? 'Ready to answer' : 'Needs sync'}</Badge>} />

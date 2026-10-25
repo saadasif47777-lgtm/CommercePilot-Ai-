@@ -157,6 +157,7 @@ export interface CampaignSimulation {
 }
 
 export interface CampaignPlan {
+  targeting?: CampaignTargeting
   objective: string
   objective_detail: string
   duration_days: number
@@ -272,6 +273,8 @@ export interface Report {
 }
 
 export interface Project {
+  saved_products?: Product[]
+  market_intelligence?: MarketIntelligence
   id: string
   name: string
   created_at: string
@@ -287,6 +290,17 @@ export interface Project {
   steps: Record<string, StepState>
   is_example: boolean
   demo_labels: string[]
+}
+
+export interface CampaignTargeting {
+  locations: string[]; languages: string[]; age_min: number; age_max: number
+  placements: string[]; landing_url: string; optimization: string
+}
+export interface MarketIntelligence {
+  recommendations?: { suggestion: string; evidence: string; source_index: number }[]
+  query: string; checked_at: string; provider: string
+  sources: { title: string; url: string; snippet: string }[]
+  review_steps: string[]; limitations: string; warning?: string
 }
 
 export interface ProjectSummary {

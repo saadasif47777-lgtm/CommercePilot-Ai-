@@ -371,15 +371,35 @@ class CreativeConcept(BaseModel):
     cta: str
 
 
+class CampaignTargeting(BaseModel):
+    locations: list[str] = Field(default_factory=list, max_length=20)
+    languages: list[str] = Field(default_factory=list, max_length=10)
+    age_min: int = Field(18, ge=18, le=65)
+    age_max: int = Field(65, ge=18, le=65)
+    placements: list[Literal["facebook_feed", "instagram_feed", "instagram_stories", "instagram_reels", "facebook_reels"]] = Field(default_factory=list, max_length=5)
+    landing_url: str = Field("", max_length=500, pattern=r"^(https://[^\s]+)?$")
+    optimization: Literal["purchase", "landing_page_view", "lead"] = "purchase"
+
+    @model_validator(mode="after")
+    def valid_age_range(self):
+        if self.age_max < self.age_min:
+            raise ValueError("Maximum age must be at least minimum age")
+        if any(not item.strip() or len(item) > 150 for item in self.locations + self.languages):
+            raise ValueError("Locations and languages must be 1–150 characters")
+        return self
+
+
 class CampaignRequest(BaseModel):
     objective: Literal["traffic", "leads", "sales", "retargeting"] = "sales"
     budget: Optional[float] = Field(None, ge=0)
     duration_days: int = Field(14, ge=1, le=180)
     allocations: Optional[list[Allocation]] = None
     notes: str = Field("", max_length=1000)
+    targeting: CampaignTargeting = Field(default_factory=CampaignTargeting)
 
 
 class CampaignPlan(BaseModel):
+    targeting: CampaignTargeting = Field(default_factory=CampaignTargeting)
     objective: str
     objective_detail: str = ""
     duration_days: int = 14

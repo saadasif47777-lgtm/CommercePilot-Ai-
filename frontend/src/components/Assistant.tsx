@@ -46,7 +46,7 @@ export function AssistantChat() {
     setEpoch(value => value + 1)
   }
   return <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.8fr)]">
-    <Card padded={false} className="flex h-[min(820px,calc(100dvh-190px))] min-h-[560px] flex-col overflow-hidden">
+    <Card padded={false} className="flex h-[min(860px,calc(100dvh-120px))] min-h-[440px] flex-col overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-5">
         <div><p className="font-semibold text-ink">Your business guide</p><p className="text-xs text-muted">Ideas, setup, budgets and a sensible next step.</p></div>
         <Button variant="ghost" size="sm" disabled={busy} onClick={reset}>New conversation</Button>
@@ -68,7 +68,7 @@ export function AssistantChat() {
           <Textarea aria-label="Message AI assistant" rows={2} maxLength={2000} value={input} placeholder="Ask a question, share your idea, or tell me your budget and location…" disabled={busy || !session} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(input) } }} className="min-h-[76px] resize-none" />
           <Button type="submit" busy={busy && !!session} disabled={!session || !input.trim()}>Send</Button>
         </form>
-        <p className="mt-2 text-[10px] text-muted">Conversations expire after 24 hours. Keep passwords and sensitive payment details out of chat.</p>
+        <p className="mt-2 text-[11px] text-muted">Enter to send · Shift + Enter for a new line. Conversations expire after 24 hours. Keep credentials and payment details out of chat.</p>
       </div>
     </Card>
     <div className="min-w-0 space-y-5">

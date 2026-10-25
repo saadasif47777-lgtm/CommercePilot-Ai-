@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { ProjectProvider, useProject } from './state/ProjectContext'
 import { Sidebar, TopBar } from './components/Layout'
 import { OverviewPage } from './pages/Overview'
@@ -33,12 +33,10 @@ function Shell() {
         <main className="px-4 py-6 lg:px-7 lg:py-7">
           {/* Keying the motion wrapper by pathname replays the fade/slide
               transition whenever the route changes. */}
-          <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname + ':' + (project?.id ?? '')}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
             >
               {/* One route per workspace step; unknown URLs fall back to the
@@ -57,7 +55,6 @@ function Shell() {
                 <Route path="*" element={<OverviewPage />} />
               </Routes>
             </motion.div>
-          </AnimatePresence>
         </main>
         <footer className="px-6 pb-6 pt-2 text-center text-[11px] text-muted">
           CommercePilot AI · Your business, products and campaign planning workspace.
