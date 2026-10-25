@@ -19,8 +19,12 @@ def main():
         from commercepilot import integrations
         from commercepilot.agents import product_hunter
         from commercepilot.ai import client as ai_client
+        from commercepilot.tools import product_pages
+        from commercepilot.tools.product_pages import PageFacts
         from commercepilot.tools.web_search import SearchOutcome, SearchResult
         from tests.test_support import catalog, product, shop_data
+        product_hunter.inspect_pages = lambda urls: [PageFacts(kind="product", title="Desk lamp PKR 2000", price=2000, currency="PKR", price_basis="product structured offer", url=url) for url in urls]
+        product_pages.inspect_page = lambda url: PageFacts(kind="product", title="Imported URL lamp", price=3000, currency="PKR", price_basis="product structured offer", availability="InStock", url=url)
 
         def model(url, headers, payload, timeout):
             system = payload["messages"][0]["content"]

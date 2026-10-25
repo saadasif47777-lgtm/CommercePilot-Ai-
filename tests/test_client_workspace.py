@@ -32,6 +32,21 @@ def test_project_research_uses_and_saves_exact_query(client, monkeypatch):
     assert project["campaign"] is None
 
 
+def test_product_url_import_saves_page_evidence_and_rejects_collections(client, monkeypatch):
+    from commercepilot.tools import product_pages
+    pid = client.post("/api/projects", json={"brief": {"business_name": "Research QA"}}).json()["id"]
+    page = product_pages.PageFacts(kind="product", title="Vase", price=2500, currency="PKR", url="https://brand.example/products/vase", price_basis="product structured offer")
+    monkeypatch.setattr(product_pages, "inspect_page", lambda url: page)
+    response = client.post(f"/api/projects/{pid}/products/from-url", json={"url": page.url})
+    assert response.status_code == 200
+    saved = client.get(f"/api/projects/{pid}").json()["saved_products"][0]
+    assert saved["observed_price"] == 2500 and saved["page_kind"] == "product"
+    assert saved["estimated_cost"] is None and saved["page_checked_at"]
+    assert client.get(f"/api/projects/{pid}").json()["selected_product"] is None
+    page.kind = "collection"
+    assert client.post(f"/api/projects/{pid}/products/from-url", json={"url": page.url}).status_code == 422
+
+
 def test_live_market_sources_persist_and_empty_search_is_honest(client, monkeypatch):
     from commercepilot.tools import web_search
     monkeypatch.setattr(api.ai, "complete_json", lambda **kwargs: None)

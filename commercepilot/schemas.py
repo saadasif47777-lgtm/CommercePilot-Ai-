@@ -42,6 +42,11 @@ class ScoreFactor(BaseModel):
 
 
 class Product(BaseModel):
+    page_kind: Literal["not_checked", "product", "collection", "needs_review"] = "not_checked"
+    price_source: str = "not provided"
+    page_checked_at: Optional[str] = None
+    extraction_note: str = ""
+    availability: str = "not provided"
     id: str
     title: str
     description: str = ""
@@ -79,6 +84,7 @@ class Product(BaseModel):
 
 
 class ResearchRequest(BaseModel):
+    currency: Optional[str] = Field(None, pattern=r"^[A-Z]{3}$")
     niche: Optional[str] = Field(None, max_length=200)
     market: Optional[str] = Field("Pakistan", max_length=100)
     audience: Optional[str] = Field(None, max_length=400)

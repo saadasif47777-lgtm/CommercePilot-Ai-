@@ -205,6 +205,7 @@ def step_validate_brief(store: ProjectStore, project: dict) -> None:
 
 
 def step_research(store: ProjectStore, project: dict, request: ResearchRequest) -> ResearchResult:
+    request = request.model_copy(update={"currency": (project.get("brief") or {}).get("currency") or request.currency})
     execution = _start(store, project, "Product Hunter", f"mode={request.mode}, niche={request.niche!r}")
     _set_step(store, project, "research", "running", "Searching candidates...")
     try:
@@ -285,6 +286,8 @@ def _resolve_product(project: dict, product_id: Optional[str], auto_select: bool
 
 def step_select_product(store: ProjectStore, project: dict, product_id: Optional[str], auto_select: bool) -> Product:
     product = _resolve_product(project, product_id, auto_select)
+    if product.page_kind == "collection":
+        raise StepFailed("select", "This is a collection page. Open the source and import an individual product URL instead.")
     if config.production() and product.is_sample_data:
         raise StepFailed("select", "Sample products cannot be used in production")
     invalidate_outputs(project)
@@ -791,6 +794,8 @@ def invalidate_outputs(project: dict) -> None:
 
 def _usable_product(row: dict) -> Product:
     product = Product(**row)
+    if product.page_kind == "collection":
+        raise StepFailed("select", "Open this collection and import an individual product URL; collections cannot be used as products.")
     if config.production() and product.is_sample_data:
         raise StepFailed("select", "Select a real product; legacy sample products are disabled in production")
     return product

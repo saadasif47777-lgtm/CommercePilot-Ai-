@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, errorText } from '../services/api'
+import { api, errorText, request } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, EmptyState, ErrorBanner, Field, Input, PageHeader, SectionTitle, Select, SkeletonCards, WarningList } from '../components/ui'
 import { ProductCard, ProductTable } from '../components/ProductCards'
@@ -23,6 +23,8 @@ export function ProductHunterPage() {
   const brief = project?.brief
 
   const [niche, setNiche] = useState('')
+  const [productUrl, setProductUrl] = useState('')
+  const [urlMessage, setUrlMessage] = useState('')
   const mode = 'live' as const
   const [priceMin, setPriceMin] = useState<string>('')
   const [priceMax, setPriceMax] = useState<string>('')
@@ -51,6 +53,7 @@ export function ProductHunterPage() {
       setLocalError(null)
       try {
         await api.projectResearch(project.id, {
+          currency: brief?.currency,
           niche: niche || brief?.niche || brief?.industry || 'trending products',
           market: brief?.target_market || 'Pakistan',
           audience: brief?.target_audience,
@@ -71,7 +74,7 @@ export function ProductHunterPage() {
   // order is preserved as the default (highest score first).
   const filtered = useMemo(() => {
     if (!research) return [] as Product[]
-    let rows = research.products.filter(p => !p.is_sample_data)
+    let rows = research.products.filter(p => !p.is_sample_data && p.page_kind !== 'collection')
     if (categoryFilter) rows = rows.filter((p) => p.category === categoryFilter)
     if (sourceFilter !== 'all') rows = rows.filter((p) => (sourceFilter === 'live' ? p.source !== 'sample' : p.source === 'sample'))
     const confRank = { high: 3, medium: 2, low: 1 } as const
@@ -163,6 +166,7 @@ export function ProductHunterPage() {
       />
 
       {(error || localError) && <ErrorBanner message={localError ?? error ?? ''} onDismiss={() => { setLocalError(null); clearError() }} />}
+      <Card className="mb-5"><SectionTitle title="Research an individual product URL" subtitle="Open a collection result, choose a specific item, and paste its public HTTPS product link here. Accessible structured details are saved to your library." /><form className="flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); run('import-url', async () => { if (!project) return; setUrlMessage(''); await request(`/api/projects/${project.id}/products/from-url`, { method: 'POST', body: JSON.stringify({ url: productUrl }) }); await refreshProject(); setUrlMessage('Product details saved to your library. Review the source, select the product and confirm your own economics.') }) }}><div className="min-w-0 flex-1"><Field label="Individual product URL"><Input type="url" required value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://brand.com/products/ceramic-vase" /></Field></div><Button type="submit" disabled={!project || !!busy} busy={busy === 'import-url'}>Read & save product</Button></form>{urlMessage && <p role="status" className="mt-3 text-sm text-brand">{urlMessage}</p>}<p className="mt-3 text-xs text-muted">Restricted pages, login walls and JavaScript-only pricing may need manual entry or Shopify import. Supplier costs are never inferred from a retailer's price.</p></Card>
       <Card className="mb-5">
         <SectionTitle title="Your product library" subtitle="Saved to this project's database. Save candidates to compare; select one to use in your storefront, campaign and analytics." />
         <div className="grid gap-3 sm:grid-cols-2">{(project?.saved_products ?? []).map(p => <div key={p.id} className="rounded-lg border border-line p-3"><p className="font-semibold">{p.title}</p><p className="mt-1 text-xs text-muted">{p.source} · {p.currency} {p.observed_price ?? 'price needs confirmation'}</p>{p.source_url && <a className="mt-2 block text-sm text-brand underline" href={p.source_url} target="_blank" rel="noopener noreferrer">View original source ↗</a>}<Button size="sm" variant="secondary" disabled={!!busy} onClick={() => select(p.id)} className="mt-3">{project?.selected_product?.id === p.id ? 'Currently selected' : 'Use this product'}</Button></div>)}</div>
@@ -284,6 +288,7 @@ export function ProductHunterPage() {
           />
 
           {research.warnings.length > 0 && <div className="mb-4"><WarningList items={research.warnings} title="Research notes" /></div>}
+          {research.products.some(p => p.page_kind === 'collection') && <Card className="mb-5"><SectionTitle title="Collection sources — choose an individual item" subtitle="These pages contain many listings, so they are kept separate from product candidates and have no single price or product score." /><div className="grid gap-3 sm:grid-cols-2">{research.products.filter(p => p.page_kind === 'collection').map(p => <a key={p.id} href={p.source_url || undefined} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-line p-4 text-sm text-brand"><strong>{p.title} ↗</strong><p className="mt-2 text-muted">Open this collection, choose one item, then paste its product URL above.</p></a>)}</div></Card>}
           {searchSample.length > 0 && searchLive.length > 0 && view === 'cards' && (
             <p className="mb-3 text-xs text-muted">
               {searchSample.length} sample rows (demonstration data) · {searchLive.length} live web results (evidence-only, weakly scored).
