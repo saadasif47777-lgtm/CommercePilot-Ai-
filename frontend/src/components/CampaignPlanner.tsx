@@ -52,7 +52,7 @@ export function CampaignPlanner() {
       if (!project) return
       if (targeting.age_max < targeting.age_min) throw new Error('Maximum age must be at least minimum age.')
       if (targeting.landing_url && !/^https:\/\/\S+$/.test(targeting.landing_url)) throw new Error('Use an HTTPS landing page URL.')
-      await api.generateCampaign(project.id, { objective, budget, duration_days: duration, targeting })
+      await api.generateCampaign(project.id, { objective, budget, duration_days: duration, targeting: { ...targeting, locations: targeting.locations.map(x => x.trim()).filter(Boolean), languages: targeting.languages.map(x => x.trim()).filter(Boolean) } })
       await refreshProject()
     })
 
@@ -129,8 +129,8 @@ export function CampaignPlanner() {
         <div className="mt-5 border-t border-line pt-5">
           <SectionTitle title="Audience & delivery" subtitle="Saved with your campaign draft. These choices guide creative planning; review availability and configure delivery in Meta Ads Manager." />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Target locations" hint="Cities or countries, separated by commas"><Input value={targeting.locations.join(', ')} onChange={e => setTargeting({ ...targeting, locations: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} /></Field>
-            <Field label="Languages" hint="Leave blank for all languages"><Input value={targeting.languages.join(', ')} onChange={e => setTargeting({ ...targeting, languages: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })} /></Field>
+            <Field label="Target locations" hint="Cities or countries, separated by commas"><Input value={targeting.locations.join(',')} onChange={e => setTargeting({ ...targeting, locations: e.target.value.split(',') })} /></Field>
+            <Field label="Languages" hint="Leave blank for all languages"><Input value={targeting.languages.join(',')} onChange={e => setTargeting({ ...targeting, languages: e.target.value.split(',') })} /></Field>
             <Field label="Minimum age"><Input type="number" min={18} max={65} value={targeting.age_min} onChange={e => setTargeting({ ...targeting, age_min: Number(e.target.value) })} /></Field>
             <Field label="Maximum age"><Input type="number" min={targeting.age_min} max={65} value={targeting.age_max} onChange={e => setTargeting({ ...targeting, age_max: Number(e.target.value) })} /></Field>
             <Field label="Landing page URL"><Input type="url" placeholder="https://your-brand.com/products/item" value={targeting.landing_url} onChange={e => setTargeting({ ...targeting, landing_url: e.target.value })} /></Field>

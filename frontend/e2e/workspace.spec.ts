@@ -19,7 +19,7 @@ test('mobile workspace stays within viewport and campaign delivery choices persi
   await page.getByRole('button', { name: 'Generate campaign plan', exact: true }).click()
   await expect(page.getByText('Creative concepts', { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByLabel('Target locations', { exact: true })).toHaveValue('Lahore, Islamabad')
+  await expect(page.getByLabel('Target locations', { exact: true })).toHaveValue('Lahore,Islamabad')
   await expect(page.getByLabel('Minimum age', { exact: true })).toHaveValue('25')
 })
 
