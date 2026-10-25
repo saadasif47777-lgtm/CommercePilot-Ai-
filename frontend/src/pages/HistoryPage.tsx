@@ -60,9 +60,9 @@ export function HistoryPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           {projects.map((p) => (
             <Card key={p.id} hover>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 basis-[220px]">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-display text-base font-semibold text-ink">{p.name}</h3>
                     {p.is_example && <Badge tone="amber">example</Badge>}
                     {p.id === project?.id && <Badge tone="green">open</Badge>}
@@ -71,7 +71,7 @@ export function HistoryPage() {
                     {p.brief?.business_name} · {p.brief?.currency} {p.brief?.budget?.toLocaleString()} · updated {new Date(p.updated_at).toLocaleString()}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-1.5">
+                <div className="flex max-w-full flex-wrap gap-1.5">
                   <Button size="sm" variant="secondary" onClick={() => openProject(p.id)}>Open</Button>
                   <Button size="sm" variant="ghost" onClick={() => duplicate(p.id)} title="Create an empty copy">Duplicate</Button>
                   <Button size="sm" variant="danger" onClick={() => setConfirmDelete({ id: p.id, name: p.name })}>Delete</Button>

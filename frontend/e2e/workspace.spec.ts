@@ -1,5 +1,50 @@
 import { test, expect } from '@playwright/test'
 
+test('execution statuses never overlap long summaries in Overview or Project History', async ({ page, request }) => {
+  const name = 'Handmade ceramic decorative vases and home accessories studio'
+  const created = await (await request.post('/api/projects', { data: { brief: { business_name: name, niche: 'ceramics', budget: 10000 } } })).json()
+  const populated = await (await request.get(`/api/projects/${created.id}`)).json()
+  const longSummary = "11 ranked candidates, query 'Handmade ceramic decorative vases product price Lahore and Islamabad, Pakistan price 1500-5000'"
+  populated.executions = ['success', 'error', 'skipped', 'running', 'success'].map((status, i) => ({
+    id: `layout-${i}`, agent: i % 2 ? 'Product Hunter' : 'Business Analyst', status,
+    started_at: new Date().toISOString(), finished_at: null,
+    input_summary: i % 2 ? "mode=live, niche='Handmade ceramic decorative vases'" : 'Economics',
+    output_summary: i % 2 ? longSummary : `Source https://brand.example/products/${'handcrafted-ceramics-'.repeat(12)}`,
+    warnings: ['Product pages are inspected where permitted. Collection pages are discovery sources, not products. Prices are source observations, not supplier quotes. Enter your own cost to calculate margin; sales demand remains unverified.'],
+    errors: status === 'error' ? ['The provider could not complete this request. Please retry.'] : [],
+  }))
+  for (const step of Object.values(populated.steps) as { status: string }[]) step.status = 'success'
+  populated.steps.store.status = 'pending'
+  populated.steps.store.title = `Store Architect storefront: ${'Handcrafted ceramic collections '.repeat(8)}`
+  await page.route(`**/api/projects/${created.id}`, route => route.fulfill({ json: populated }))
+  await page.reload()
+  await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  for (const width of [320, 390, 768, 1280, 1600]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const route of ['/', '/history']) {
+      await page.goto(route)
+      await expect(page.getByTestId('execution-row')).toHaveCount(5)
+      const rows = await page.getByTestId('execution-row').evaluateAll(elements => elements.map(row => {
+        const badge = row.querySelector('[data-ui="badge"]')!.getBoundingClientRect()
+        const content = row.querySelector('[data-testid="execution-content"]')!.getBoundingClientRect()
+        return { badgeRight: badge.right, badgeBottom: badge.bottom, contentLeft: content.left, contentTop: content.top }
+      }))
+      for (const row of rows) {
+        if (width >= 640) {
+          expect(row.contentLeft - row.badgeRight).toBeGreaterThanOrEqual(11)
+          expect(Math.abs(row.contentLeft - rows[0].contentLeft)).toBeLessThan(1)
+        } else {
+          expect(row.contentTop - row.badgeBottom).toBeGreaterThanOrEqual(3)
+        }
+      }
+      const clippedBadges = await page.locator('[data-ui="badge"]').evaluateAll(elements => elements.filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.textContent))
+      expect(clippedBadges).toEqual([])
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+    }
+  }
+})
+
 test('text, product metrics and actions remain aligned at mobile tablet and desktop widths', async ({ page, request }) => {
   const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'Alignment QA', niche: 'lighting', budget: 10000 } } })).json()
   for (const title of ['Desk lamp', 'Handcrafted adjustable desk lighting for a comfortable reading corner', 'Ceramic lamp']) {
