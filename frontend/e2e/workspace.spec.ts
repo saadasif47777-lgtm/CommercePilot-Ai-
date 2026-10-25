@@ -1,5 +1,28 @@
 import { test, expect } from '@playwright/test'
 
+test('mobile workspace stays within viewport and campaign delivery choices persist', async ({ page, request }) => {
+  const created = await (await request.post('/api/projects', { data: { brief: { business_name: 'Mobile QA', niche: 'lamps', budget: 10000 } } })).json()
+  await request.post(`/api/projects/${created.id}/products/manual`, { data: { title: 'Desk lamp', observed_price: 2000, observed_cost: 800 } })
+  await page.reload()
+  await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
+  await page.setViewportSize({ width: 390, height: 844 })
+  for (const route of ['/', '/business', '/products', '/marketing', '/analytics', '/settings', '/support', '/assistant']) {
+    await page.goto(route)
+    await expect(page.locator('main h1')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  }
+  await page.goto('/marketing')
+  await page.getByLabel('Target locations', { exact: true }).fill('Lahore, Islamabad')
+  await page.getByLabel('Languages', { exact: true }).fill('Urdu, English')
+  await page.getByLabel('Minimum age', { exact: true }).fill('25')
+  await page.getByLabel('Maximum age', { exact: true }).fill('45')
+  await page.getByRole('button', { name: 'Generate campaign plan', exact: true }).click()
+  await expect(page.getByText('Creative concepts', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('Target locations', { exact: true })).toHaveValue('Lahore, Islamabad')
+  await expect(page.getByLabel('Minimum age', { exact: true })).toHaveValue('25')
+})
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Add New Project' }).first()).toBeVisible()
