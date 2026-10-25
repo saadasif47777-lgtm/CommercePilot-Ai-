@@ -66,12 +66,12 @@ export function WorkflowSteps({ compact = false }: { compact?: boolean }) {
         >
           <StepIcon status={step.status} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-ink">
-              {i + 1}. {step.title}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium leading-6 text-ink">
+              <span>{i + 1}. {step.title}</span>
               {step.status === 'success' && <Badge tone="green">done</Badge>}
               {step.status === 'error' && <Badge tone="red">failed</Badge>}
               {step.status === 'waiting' && <Badge tone="amber">awaiting selection</Badge>}
-            </p>
+            </div>
             {step.message && <p className="mt-0.5 truncate text-xs text-muted">{step.message}</p>}
           </div>
         </motion.div>

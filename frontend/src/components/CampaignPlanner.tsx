@@ -160,14 +160,14 @@ export function CampaignPlanner() {
               subtitle={plan.generation_mode === 'llm' ? 'Copy written with a configured LLM' : 'Earlier copy — regenerate with your configured model'}
               right={<Badge tone="amber">Draft · not published</Badge>}
             />
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {plan.creatives.map((c) => (
-                <div key={c.name} className="rounded-xl border border-line bg-mist/50 p-4">
+                <div key={c.name} className="flex flex-col rounded-xl border border-line bg-mist/50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-accent-dark">{c.name}</p>
-                  <p className="mt-1 text-xs text-muted">{c.angle}</p>
-                  <p className="mt-2 font-display text-[15px] font-semibold text-ink">{c.headline}</p>
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-ink/80">{c.primary_text}</p>
-                  <span className="mt-3 inline-block rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white">{c.cta}</span>
+                  <p className="mt-2 min-h-12 text-xs leading-relaxed text-muted">{c.angle}</p>
+                  <p className="mt-3 min-h-12 font-display text-base font-semibold leading-snug text-ink">{c.headline}</p>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-ink/80">{c.primary_text}</p>
+                  <span className="mt-4 inline-block self-start rounded-lg bg-brand px-3 py-2 text-xs font-semibold leading-5 text-white">{c.cta}</span>
                 </div>
               ))}
             </div>

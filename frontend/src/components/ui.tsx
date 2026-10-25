@@ -27,7 +27,7 @@ export function Badge({
     blue: 'bg-sky-50 text-sky-800 border-sky-200',
   }
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium tracking-wide ${tones[tone]}`}>
+    <span className={`inline-flex max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 tracking-wide ${tones[tone]}`}>
       {pulse && <span className="dot-pulse h-1.5 w-1.5 rounded-full bg-current" />}
       {children}
     </span>
@@ -60,12 +60,12 @@ export function Card({
 
 export function SectionTitle({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-x-5 gap-y-3">
+      <div className="min-w-0 flex-1 basis-[260px]">
         <h2 className="text-lg font-semibold text-ink">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-sm leading-relaxed text-muted">{subtitle}</p>}
       </div>
-      {right}
+      {right && <div className="flex max-w-full flex-wrap items-center gap-2">{right}</div>}
     </div>
   )
 }
@@ -102,9 +102,9 @@ export function Button({
     danger: 'border border-red-200 bg-paper text-danger hover:bg-red-50 disabled:opacity-50',
   }
   const sizes: Record<string, string> = {
-    sm: 'px-2.5 py-1 text-xs',
-    md: 'px-3.5 py-2 text-sm',
-    lg: 'px-5 py-2.5 text-[15px]',
+    sm: 'min-h-9 px-2.5 py-1 text-xs',
+    md: 'min-h-10 px-3.5 py-2 text-sm',
+    lg: 'min-h-11 px-5 py-2.5 text-[15px]',
   }
   return (
     <button
@@ -112,7 +112,7 @@ export function Button({
       title={title}
       disabled={disabled || busy}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-lg text-center font-medium leading-5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {busy && <Spinner />}
       {children}
@@ -133,10 +133,10 @@ export function Spinner({ className = 'h-3.5 w-3.5' }: { className?: string }) {
 // Field + Input/Textarea/Select share one input style so forms line up.
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+    <label className="form-field">
+      <span className="form-field-label text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
+      {hint && <span className="form-field-hint text-xs text-muted">{hint}</span>}
     </label>
   )
 }
@@ -146,18 +146,18 @@ const inputBase =
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   const { className = '', ...rest } = props
-  return <input {...rest} className={`${inputBase} ${className}`} />
+  return <input {...rest} className={`h-10 leading-5 ${inputBase} ${className}`} />
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const { className = '', ...rest } = props
-  return <textarea {...rest} className={`${inputBase} min-h-[80px] ${className}`} />
+  return <textarea {...rest} className={`${inputBase} min-h-[80px] leading-relaxed ${className}`} />
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   const { className = '', children, ...rest } = props
   return (
-    <select {...rest} className={`${inputBase} ${className}`}>
+    <select {...rest} className={`h-10 leading-5 ${inputBase} ${className}`}>
       {children}
     </select>
   )
@@ -265,9 +265,9 @@ export function Stat({ label, value, sub, tone }: { label: string; value: ReactN
   const color = tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-danger' : 'text-ink'
   return (
     <div className="rounded-xl border border-line bg-paper p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
-      <p className={`mt-1 font-display text-2xl font-semibold ${color}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
+      <p className="stat-label text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className={`stat-value mt-2 font-display text-xl font-semibold sm:text-2xl ${color}`}>{value}</p>
+      {sub && <p className="mt-2 text-xs leading-relaxed text-muted">{sub}</p>}
     </div>
   )
 }
@@ -275,12 +275,12 @@ export function Stat({ label, value, sub, tone }: { label: string; value: ReactN
 export function PageHeader({ eyebrow, title, body, actions }: { eyebrow?: string; title: string; body?: string; actions?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className="max-w-2xl">
+      <div className="min-w-0 max-w-2xl flex-1 basis-[320px]">
         {eyebrow && <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-accent-dark">{eyebrow}</p>}
-        <h1 className="font-display text-2xl font-semibold text-ink md:text-[28px]">{title}</h1>
+        <h1 className="font-display text-2xl font-semibold leading-tight text-ink md:text-[28px]">{title}</h1>
         {body && <p className="mt-1.5 text-sm leading-relaxed text-muted">{body}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className={`flex max-w-full flex-wrap items-center gap-2 ${eyebrow ? 'sm:pt-5' : ''}`}>{actions}</div>}
     </div>
   )
 }

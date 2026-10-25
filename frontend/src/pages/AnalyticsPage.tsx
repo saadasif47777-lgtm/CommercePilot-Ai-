@@ -270,7 +270,7 @@ export function AnalyticsPage() {
               <SectionTitle title="Budget & campaign KPIs" />
               {project.campaign ? (
                 <>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <Stat label="Budget" value={`${currency} ${analysis.budget_summary.budget?.toLocaleString() ?? '—'}`} />
                     <Stat
                       label="Planned spend"
