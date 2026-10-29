@@ -251,3 +251,92 @@ def test_usage_summary_warns_near_budget(ai, monkeypatch):
     assert summary["warn"] is True
     assert summary["percent_used"] == 85.0
     assert summary["remaining_usd"] == 1.5
+
+
+@pytest.fixture()
+def claude(ai, monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "anthropic-test-key")
+    monkeypatch.setattr(config, "ANTHROPIC_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setattr(config, "CLAUDE_MODULES", {"marketing", "store_architect", "product_hunting"})
+
+
+def _claude_ok(text='{"intent":"report"}'):
+    return _Resp(payload={"content": [{"type": "thinking", "thinking": "not user output"}, {"type": "text", "text": text}],
+                          "stop_reason": "end_turn", "usage": {"input_tokens": 100, "output_tokens": 20}})
+
+
+@pytest.mark.parametrize("prompt", ["campaign_creatives", "store_copy", "product_research"])
+def test_selected_modules_use_native_claude_and_separate_credentials(claude, monkeypatch, prompt):
+    calls = []
+    monkeypatch.setattr(config, "LLM_BASE_URL", "https://default.example/v1")
+
+    def post(url, headers, payload, timeout):
+        calls.append((url, headers, payload, timeout))
+        return _claude_ok()
+
+    monkeypatch.setattr(ai_client, "_post", post)
+    result = ai_client.complete_json(prompt_name=prompt, user="review", schema=AssistantIntent)
+    assert result.intent == "report"
+    url, headers, payload, timeout = calls[0]
+    assert url == "https://api.anthropic.com/v1/messages"
+    assert headers["Authorization"] == "Bearer anthropic-test-key"
+    assert headers["anthropic-version"] == "2023-06-01"
+    assert payload["model"] == "claude-sonnet-5-5"
+    assert payload["thinking"] == {"type": "between_tools"}
+    assert payload["system"] and payload["messages"][0]["role"] == "user"
+    assert not {"response_format", "temperature", "max_completion_tokens"} & payload.keys()
+    assert timeout == config.ANTHROPIC_TIMEOUT
+    summary = ai_client.usage_summary()
+    assert summary["input_tokens"] == 100 and summary["output_tokens"] == 20
+    assert summary["est_cost_usd"] == pytest.approx(0.0004)
+    row = ai_client._log()._conn().execute("SELECT provider, model FROM ai_usage").fetchone()
+    assert row["provider"] == "anthropic" and row["model"] == "claude-sonnet-5-5"
+
+
+def test_other_modules_keep_default_provider(claude, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ai_client, "_post", lambda url, headers, payload, timeout: calls.append((url, headers, payload)) or _ok())
+    _call()
+    assert calls[0][0].startswith("https://api.groq.com/")
+    assert calls[0][1]["Authorization"] == "Bearer test-key"
+    assert calls[0][2]["model"] == "openai/gpt-oss-20b"
+
+
+def test_missing_claude_key_never_uses_groq_for_selected_modules(claude, monkeypatch):
+    monkeypatch.setattr(config, "APP_MODE", "production")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(ai_client, "_post", lambda *args: pytest.fail("No provider should be called"))
+    with pytest.raises(ai_client.AIConfigError):
+        ai_client.complete_json(prompt_name="store_copy", user="x", schema=AssistantIntent)
+
+
+def test_claude_repair_stays_on_claude(claude, monkeypatch):
+    replies = iter([_claude_ok("not json"), _claude_ok()])
+    urls = []
+    monkeypatch.setattr(ai_client, "_post", lambda url, *args: urls.append(url) or next(replies))
+    result = ai_client.complete_json(prompt_name="store_copy", user="x", schema=AssistantIntent)
+    assert result.intent == "report" and urls == ["https://api.anthropic.com/v1/messages"] * 2
+
+
+def test_claude_auth_error_is_actionable_and_does_not_leak_secrets(claude, monkeypatch, caplog):
+    monkeypatch.setattr(ai_client, "_post", lambda *args: _Resp(401, {"error": {"message": "secret provider detail"}}))
+    with pytest.raises(AIRequestError, match="Claude authentication failed"):
+        ai_client.verify_anthropic()
+    assert "secret provider detail" not in caplog.text
+    assert "anthropic-test-key" not in repr(ai_client.route_for("store_copy"))
+
+
+@pytest.mark.parametrize("reason", ["refusal", "max_tokens"])
+def test_claude_incomplete_output_is_not_accepted(claude, monkeypatch, reason):
+    response = _claude_ok()
+    response._payload["stop_reason"] = reason
+    monkeypatch.setattr(ai_client, "_post", lambda *args: response)
+    with pytest.raises(AIRequestError, match="could not complete"):
+        ai_client.complete_json(prompt_name="store_copy", user="x", schema=AssistantIntent)
+
+
+def test_claude_probe_can_run_before_modules_are_activated(claude, monkeypatch):
+    monkeypatch.setattr(config, "CLAUDE_MODULES", set())
+    monkeypatch.setattr(ai_client, "_post", lambda *args: _claude_ok("OK"))
+    assert ai_client.verify_anthropic() == {"verified": True, "provider": "anthropic", "model": "claude-sonnet-5-5"}
+    assert ai_client.route_for("store_copy").provider == "groq"

@@ -1,7 +1,7 @@
 """Provider-agnostic LLM client.
 
 Responsibilities (all server-side):
-  * one HTTP shape for any OpenAI-compatible provider (Groq by default);
+  * OpenAI-compatible providers (Groq by default) and native Claude Messages;
   * retries with exponential backoff + jitter on timeouts, 429 and 5xx;
   * request timeouts and output-token caps;
   * JSON output validated against a Pydantic schema, with exactly one repair
@@ -17,6 +17,7 @@ import logging
 import random
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Any, Optional, Type, TypeVar
 
 import httpx
@@ -59,6 +60,7 @@ DEFAULT_BASE_URLS: dict[str, str] = {
 # Estimated USD per 1M tokens (input, output). Used only for the spend estimate
 # and the monthly cap — verify against the provider's current pricing page.
 PRICES: dict[str, tuple[float, float]] = {
+    "claude-sonnet-5-5": (2.00, 10.00),
     "openai/gpt-oss-20b": (0.10, 0.50),
     "openai/gpt-oss-120b": (0.20, 0.90),
     "default": (0.20, 0.90),
@@ -91,8 +93,31 @@ def _log() -> UsageLog:
 # --------------------------------------------------------------------------- #
 # Configuration helpers
 # --------------------------------------------------------------------------- #
-def available() -> bool:
-    return bool(config.LLM_API_KEY)
+MODULE_PROMPTS = {
+    "campaign_creatives": "marketing",
+    "store_copy": "store_architect",
+    "product_research": "product_hunting",
+}
+
+
+@dataclass(frozen=True)
+class ModelRoute:
+    provider: str
+    model: str
+    api_key: str = field(repr=False)
+    base_url: str
+
+
+def route_for(prompt_name: str = "", quality: str = QUALITY_FAST) -> ModelRoute:
+    if prompt_name == "anthropic_verify" or MODULE_PROMPTS.get(prompt_name) in config.CLAUDE_MODULES:
+        return ModelRoute("anthropic", config.ANTHROPIC_MODEL, config.ANTHROPIC_API_KEY, "https://api.anthropic.com/v1")
+    model = config.LLM_MODEL_STRONG if quality == QUALITY_STRONG and config.LLM_MODEL_STRONG else config.LLM_MODEL
+    return ModelRoute(_provider(), model, config.LLM_API_KEY, _base_url())
+
+
+def available(prompt_name: str = "") -> bool:
+    route = route_for(prompt_name)
+    return bool(route.api_key and route.model)
 
 
 def mode() -> str:
@@ -169,11 +194,12 @@ def _record(
     latency_ms: int,
     status: str,
     model: str,
+    provider: Optional[str] = None,
 ) -> None:
     # Usage logging must never break a request.
     with contextlib.suppress(Exception):
         _log().record(
-            provider=_provider(),
+            provider=provider or _provider(),
             model=model,
             prompt=prompt_name,
             input_tokens=input_tokens,
@@ -204,15 +230,20 @@ def _call(
     retries: Optional[int] = None,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
-    if not available():
+    if not available(prompt_name):
         raise AIConfigError("No AI provider key configured on the server.")
     _budget_check()
-    model = model_for(quality)
+    route = route_for(prompt_name, quality)
+    model = route.model
+    system = system + "\n\n" + UNTRUSTED_SYSTEM_NOTE
+
+    def record(input_tokens: int, output_tokens: int, latency: int, status: str) -> None:
+        _record(prompt_name, input_tokens, output_tokens, latency, status, model, route.provider)
 
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system + "\n\n" + UNTRUSTED_SYSTEM_NOTE},
+            {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "temperature": 0.3,
@@ -220,26 +251,42 @@ def _call(
     }
     if as_json:
         payload["response_format"] = {"type": "json_object"}
-    if _provider() == "groq" and model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
+    if route.provider == "groq" and model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
         # Groq counts reasoning against the completion limit as well. Reserving
         # only the visible-answer allowance can truncate JSON before it starts.
         payload["reasoning_effort"] = "low"
         payload["max_completion_tokens"] = payload.pop("max_tokens") + 2048
 
     headers = {
-        "Authorization": f"Bearer {config.LLM_API_KEY}",
+        "Authorization": f"Bearer {route.api_key}",
         "content-type": "application/json",
     }
-    url = f"{_base_url()}/chat/completions"
+    url = f"{route.base_url}/chat/completions"
+    request_timeout = config.LLM_TIMEOUT if timeout is None else timeout
+    if route.provider == "anthropic":
+        url = f"{route.base_url}/messages"
+        headers["anthropic-version"] = "2023-06-01"
+        # Claude Messages has a top-level system prompt and text content blocks.
+        # JSON is constrained by the prompt, then validated/repaired locally.
+        payload = {
+            "model": model, "system": system,
+            "messages": [{"role": "user", "content": user}],
+            "max_tokens": int(max_tokens or config.ANTHROPIC_MAX_OUTPUT_TOKENS),
+        }
+        if model == "claude-sonnet-5-5":
+            # Sonnet 5.5 rejects sampling parameters and thinking=disabled.
+            payload["thinking"] = {"type": "between_tools"}
+            payload["output_config"] = {"effort": "medium"}
+        request_timeout = config.ANTHROPIC_TIMEOUT if timeout is None else timeout
     attempts = max(0, int(config.LLM_MAX_RETRIES if retries is None else retries)) + 1
 
     for attempt in range(attempts):
         started = time.time()
         try:
-            resp = _post(url, headers, payload, config.LLM_TIMEOUT if timeout is None else timeout)
+            resp = _post(url, headers, payload, request_timeout)
         except (httpx.TimeoutException, httpx.HTTPError) as exc:
             latency = int((time.time() - started) * 1000)
-            _record(prompt_name, 0, 0, latency, "failed_transport", model)
+            record(0, 0, latency, "failed_transport")
             if attempt < attempts - 1:
                 time.sleep(
                     min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
@@ -253,25 +300,30 @@ def _call(
         if resp.status_code == 200:
             try:
                 data = resp.json()
-                content = data["choices"][0]["message"]["content"] or ""
+                if route.provider == "anthropic":
+                    if data.get("stop_reason") in {"refusal", "max_tokens"}:
+                        usage = data.get("usage") or {}
+                        record(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0), latency, "failed_incomplete")
+                        raise AIRequestError("Claude could not complete the response. Try a shorter request.")
+                    content = "".join(block["text"] for block in data["content"] if block.get("type") == "text")
+                else:
+                    content = data["choices"][0]["message"]["content"] or ""
             except (ValueError, KeyError, IndexError, TypeError) as exc:
-                _record(prompt_name, 0, 0, latency, "failed_response", model)
+                record(0, 0, latency, "failed_response")
                 raise AIRequestError("AI service returned an unexpected response.") from exc
             if not isinstance(content, str) or not content.strip():
                 raise AIRequestError("AI service returned no usable text.")
             usage = data.get("usage") or {}
-            _record(
-                prompt_name,
-                int(usage.get("prompt_tokens") or 0),
-                int(usage.get("completion_tokens") or 0),
+            record(
+                (int(usage.get("input_tokens") or 0) + int(usage.get("cache_creation_input_tokens") or 0) + int(usage.get("cache_read_input_tokens") or 0)) if route.provider == "anthropic" else int(usage.get("prompt_tokens") or 0),
+                int(usage.get("output_tokens" if route.provider == "anthropic" else "completion_tokens") or 0),
                 latency,
                 "ok",
-                model,
             )
             return content
 
         if resp.status_code in RETRYABLE_STATUS:
-            _record(prompt_name, 0, 0, latency, f"retry_{resp.status_code}", model)
+            record(0, 0, latency, f"retry_{resp.status_code}")
             if attempt < attempts - 1:
                 retry_after = (resp.headers.get("retry-after") or "").strip()
                 delay = (
@@ -283,7 +335,11 @@ def _call(
                 continue
             raise AIRequestError("AI service is rate limited or unavailable right now.")
 
-        _record(prompt_name, 0, 0, latency, f"failed_{resp.status_code}", model)
+        record(0, 0, latency, f"failed_{resp.status_code}")
+        if route.provider == "anthropic" and resp.status_code == 401:
+            raise AIRequestError("Claude authentication failed. Update the Anthropic API key in the server environment.")
+        if route.provider == "anthropic" and resp.status_code == 403:
+            raise AIRequestError("The Anthropic account does not have permission to use this model.")
         # Log only allowlisted error codes, never provider messages or generated
         # content (which can contain customer input or credentials).
         try:
@@ -319,7 +375,7 @@ def complete_json(
     Raises AIBudgetExceeded / AIRequestError / AIValidationError so callers can
     surface an honest message instead of showing invented data.
     """
-    if not available():
+    if not available(prompt_name):
         if config.production():
             raise AIConfigError("No AI provider key configured on the server.")
         return None
@@ -372,7 +428,7 @@ def complete_text(
     quality: str = QUALITY_FAST,
 ) -> Optional[str]:
     """Free-form completion (short copy). None when no provider is configured."""
-    if not available():
+    if not available(prompt_name):
         if config.production():
             raise AIConfigError("No AI provider key configured on the server.")
         return None
@@ -385,6 +441,13 @@ def complete_text(
         max_tokens=max_tokens,
         quality=quality,
     ).strip()
+
+
+def verify_anthropic() -> dict[str, Any]:
+    """One small, explicitly requested probe; works before module activation."""
+    _call(system="Reply with the single word OK.", user="Connection check.",
+          prompt_name="anthropic_verify", as_json=False, max_tokens=32, retries=0, timeout=15)
+    return {"verified": True, "provider": "anthropic", "model": config.ANTHROPIC_MODEL}
 
 
 def _parse_and_validate(text: str, schema: Type[TModel]) -> tuple[Optional[TModel], str]:

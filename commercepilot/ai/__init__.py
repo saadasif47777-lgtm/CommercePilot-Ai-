@@ -29,6 +29,8 @@ from .client import (  # noqa: F401
     complete_text,
     mode,
     model_for,
+    route_for,
     usage_summary,
+    verify_anthropic,
 )
 from .guard import sanitize_text, wrap_untrusted  # noqa: F401

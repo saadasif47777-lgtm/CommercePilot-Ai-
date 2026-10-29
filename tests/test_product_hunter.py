@@ -10,6 +10,38 @@ REQ = ResearchRequest(
 )
 
 
+@pytest.mark.parametrize("review_fails", [False, True])
+def test_claude_review_keeps_retrieved_prices_and_unknown_facts(monkeypatch, review_fails):
+    from commercepilot import config
+    from commercepilot.ai.schemas import ProductResearchReview
+    from commercepilot.tools.web_search import SearchOutcome, SearchResult
+
+    monkeypatch.setattr(config, "CLAUDE_MODULES", {"product_hunting"})
+    monkeypatch.setattr(ph, "search", lambda *args, **kwargs: SearchOutcome(
+        results=[SearchResult("Ceramic vase PKR 2500", "https://brand.example/products/vase", "Handmade ceramic vase")],
+        provider="test", elapsed_ms=1))
+
+    def review(**kwargs):
+        assert kwargs["prompt_name"] == "product_research"
+        if review_fails:
+            raise ph.ai.AIRequestError("Review unavailable")
+        product_id = "live-" + ph.hashlib.sha256(b"https://brand.example/products/vase").hexdigest()[:20]
+        return ProductResearchReview(summary="Confirm supplier costs before an ad test.", reviews=[
+            {"product_id": product_id, "guidance": "Check packaging for fragile ceramics.", "observed_price": 999},
+            {"product_id": "invented-id", "guidance": "This must not attach to a result."}])
+
+    monkeypatch.setattr(ph.ai, "complete_json", review)
+    result = ph.run(ResearchRequest(niche="vase", mode="live", currency="PKR"))
+    p = result.products[0]
+    assert p.observed_price == 2500 and p.estimated_cost is None
+    assert p.demand_level is None and p.competition == "unknown" and p.score is None
+    if review_fails:
+        assert not result.ai_summary and not result.ai_reviews
+        assert any("review unavailable" in warning.lower() for warning in result.warnings)
+    else:
+        assert result.ai_summary and list(result.ai_reviews) == [p.id]
+
+
 class TestSampleDataset:
     def test_has_at_least_12_products(self):
         assert len(ph.load_sample_products()) >= 12

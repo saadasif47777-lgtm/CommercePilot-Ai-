@@ -143,7 +143,7 @@ export const api = {
   saveMetaCredentials: (payload: { access_token: string; ad_account_id: string; app_id?: string; app_secret?: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string; status: string }>('/api/integrations/meta/credentials', payload),
   verifyMeta: () => post<{ verified: boolean; detail: string }>('/api/integrations/meta/verify'),
-  verifyModel: () => post<{ verified: boolean; model: string }>('/api/integrations/llm/verify'),
+  verifyModel: (provider: 'default' | 'anthropic' = 'default') => post<{ verified: boolean; model: string }>(`/api/integrations/llm/verify?provider=${provider}`),
   metaInsights: () => request<{ ok: boolean; detail: string; source?: string; rows?: { account_name: string; account_currency: string; spend: string; clicks: string; impressions: string; date_start: string; date_stop: string }[] }>('/api/integrations/meta/insights'),
   saveShopifyCredentials: (payload: { shop_domain: string; admin_token: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string }>('/api/integrations/shopify/credentials', payload),

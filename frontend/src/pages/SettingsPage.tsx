@@ -26,7 +26,19 @@ export function SettingsPage() {
       <Card>
         <SectionTitle title="AI generation" right={<ConnectionBadge status={integrations?.llm.status} />} />
         <p className="text-sm text-muted">{integrations?.llm.detail ?? 'Check your server model configuration, then verify the connection.'}</p>
-        <p className="mt-2 text-sm">Model: {integrations?.llm.model || 'Not configured'}</p>
+        <p className="mt-2 text-sm">Default model: {integrations?.llm.model || 'Not configured'}</p>
+        {Object.entries(integrations?.llm.modules ?? {}).length > 0 && <div className="mt-4 space-y-3 rounded-lg border border-line p-3">
+          {Object.entries(integrations?.llm.modules ?? {}).map(([module, route]) => <div key={module} className="flex flex-wrap items-start justify-between gap-2 text-sm">
+            <div className="min-w-0 flex-1 basis-[180px]"><p className="font-semibold">{({ marketing: 'Marketing Studio', store_architect: 'Store Architect', product_hunting: 'Product Hunter' } as Record<string, string>)[module] ?? module}</p><p className="mt-1 break-words text-xs text-muted">{route.provider} · {route.model}</p></div>
+            <ConnectionBadge status={route.status} />
+          </div>)}
+        </div>}
+        {(integrations?.llm.anthropic || Object.entries(integrations?.llm.modules ?? {}).length > 0) && <div className="mt-4">
+          {integrations?.llm.anthropic && <p className="mb-2 text-xs text-muted">Claude available for verification: {integrations.llm.anthropic.model}</p>}
+          <Button size="sm" variant="secondary" disabled={!!busy} busy={busy === 'verify-claude'} onClick={() => perform('verify-claude', async () => {
+            const result = await api.verifyModel('anthropic'); setMessage('Claude connection verified: ' + result.model)
+          })}>Verify Claude connection</Button>
+        </div>}
         <Button className="mt-4" disabled={!!busy} busy={busy === 'verify-model'} onClick={() => perform('verify-model', async () => {
           const result = await api.verifyModel(); setMessage('AI connection verified: ' + result.model)
         })}>Verify AI connection</Button>

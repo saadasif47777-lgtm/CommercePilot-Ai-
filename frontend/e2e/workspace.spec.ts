@@ -1,5 +1,23 @@
 import { test, expect } from '@playwright/test'
 
+test('settings shows module routes and verifies Claude separately from the default model', async ({ page, request }) => {
+  const status = await (await request.get('/api/integrations/status')).json()
+  status.llm.modules = Object.fromEntries(['marketing', 'store_architect', 'product_hunting'].map(name => [name, { provider: 'anthropic', model: 'claude-sonnet-5-5', status: 'configured_unverified' }]))
+  await page.route('**/api/integrations/status', route => route.fulfill({ json: status }))
+  let claudeProbes = 0
+  await page.route('**/api/integrations/llm/verify?provider=anthropic', route => {
+    claudeProbes++
+    return route.fulfill({ json: { verified: true, model: 'claude-sonnet-5-5' } })
+  })
+  await page.goto('/settings')
+  await expect(page.getByText('anthropic · claude-sonnet-5-5', { exact: true })).toHaveCount(3)
+  await page.getByRole('button', { name: 'Verify Claude connection', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Claude connection verified: claude-sonnet-5-5')
+  expect(claudeProbes).toBe(1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+})
+
 test('execution statuses never overlap long summaries in Overview or Project History', async ({ page, request }) => {
   const name = 'Handmade ceramic decorative vases and home accessories studio'
   const created = await (await request.post('/api/projects', { data: { brief: { business_name: name, niche: 'ceramics', budget: 10000 } } })).json()
@@ -52,12 +70,18 @@ test('text, product metrics and actions remain aligned at mobile tablet and desk
   }
   const populated = await (await request.get(`/api/projects/${created.id}`)).json()
   populated.research.products = populated.research.products.map((p: Record<string, unknown>, i: number) => ({ ...p, source: 'live', page_kind: 'product', score: 9.5, page_checked_at: '2026-10-25T10:00:00Z', price_source: 'product structured offer', description: i === 0 ? '' : 'Product details with longer text to exercise wrapping and consistent card alignment.', extraction_note: i === 1 ? 'Confirm the selected variant and supplier quote before use.' : '', source_url: 'https://brand.example/products/lamp' }))
+  populated.research.ai_summary = 'Check supplier quotes and packaging before testing these products.'
+  populated.research.ai_model = 'claude-sonnet-5-5'
+  populated.research.ai_reviews = { [populated.research.products[0].id]: 'Confirm dimensions and safe delivery packaging.' }
   await page.route(`**/api/projects/${created.id}`, route => route.fulfill({ json: populated }))
   await page.reload()
   await page.getByLabel('Active project', { exact: true }).selectOption(created.id)
   await expect(page.getByRole('heading', { name: 'Alignment QA', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Product Hunter', exact: true }).click()
   await expect(page.getByTestId('product-card')).toHaveCount(3)
+  await expect(page.getByRole('heading', { name: 'AI evidence review', exact: true })).toBeVisible()
+  await page.getByText('Review guidance by product', { exact: true }).click()
+  await expect(page.getByText('Confirm dimensions and safe delivery packaging.', { exact: true })).toBeVisible()
   for (const width of [390, 768, 1280, 1600]) {
     await page.setViewportSize({ width, height: 1000 })
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
