@@ -251,6 +251,9 @@ def all_status() -> dict:
             "provider": "OpenAI-compatible API",
             "status": connection_status("llm", [config.LLM_API_KEY, config.LLM_MODEL]),
             "model": config.LLM_MODEL if ai.available() else "",
+            "anthropic": {"model": config.ANTHROPIC_MODEL,
+                          "status": connection_status("llm_anthropic", [config.ANTHROPIC_API_KEY, config.ANTHROPIC_MODEL])}
+                         if config.ANTHROPIC_API_KEY else None,
             "modules": {
                 module: {"provider": route.provider, "model": route.model,
                          "status": connection_status("llm_anthropic", [route.api_key, route.model])}

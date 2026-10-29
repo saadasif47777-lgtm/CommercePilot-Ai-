@@ -334,7 +334,7 @@ export interface WorkflowResult {
 }
 
 export interface IntegrationStatus {
-  llm: { provider: string; status: string; model: string; detail: string; modules?: Record<string, { provider: string; model: string; status: string }> }
+  llm: { provider: string; status: string; model: string; detail: string; anthropic?: { model: string; status: string } | null; modules?: Record<string, { provider: string; model: string; status: string }> }
   web_search: { provider: string; status: string; detail: string }
   meta: {
     provider: string

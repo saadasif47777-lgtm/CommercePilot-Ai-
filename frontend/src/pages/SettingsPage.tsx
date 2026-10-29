@@ -32,6 +32,9 @@ export function SettingsPage() {
             <div className="min-w-0 flex-1 basis-[180px]"><p className="font-semibold">{({ marketing: 'Marketing Studio', store_architect: 'Store Architect', product_hunting: 'Product Hunter' } as Record<string, string>)[module] ?? module}</p><p className="mt-1 break-words text-xs text-muted">{route.provider} · {route.model}</p></div>
             <ConnectionBadge status={route.status} />
           </div>)}
+        </div>}
+        {(integrations?.llm.anthropic || Object.entries(integrations?.llm.modules ?? {}).length > 0) && <div className="mt-4">
+          {integrations?.llm.anthropic && <p className="mb-2 text-xs text-muted">Claude available for verification: {integrations.llm.anthropic.model}</p>}
           <Button size="sm" variant="secondary" disabled={!!busy} busy={busy === 'verify-claude'} onClick={() => perform('verify-claude', async () => {
             const result = await api.verifyModel('anthropic'); setMessage('Claude connection verified: ' + result.model)
           })}>Verify Claude connection</Button>
