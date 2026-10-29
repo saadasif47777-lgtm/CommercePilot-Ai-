@@ -265,7 +265,7 @@ def _claude_ok(text='{"intent":"report"}'):
                           "stop_reason": "end_turn", "usage": {"input_tokens": 100, "output_tokens": 20}})
 
 
-@pytest.mark.parametrize("prompt", ["campaign_creatives", "store_copy", "product_research"])
+@pytest.mark.parametrize("prompt", ["campaign_creatives", "store_copy", "product_research", "market_review"])
 def test_selected_modules_use_native_claude_and_separate_credentials(claude, monkeypatch, prompt):
     calls = []
     monkeypatch.setattr(config, "LLM_BASE_URL", "https://default.example/v1")
@@ -340,3 +340,10 @@ def test_claude_probe_can_run_before_modules_are_activated(claude, monkeypatch):
     monkeypatch.setattr(ai_client, "_post", lambda *args: _claude_ok("OK"))
     assert ai_client.verify_anthropic() == {"verified": True, "provider": "anthropic", "model": "claude-sonnet-5-5"}
     assert ai_client.route_for("store_copy").provider == "groq"
+
+
+def test_claude_deadline_stops_requests_before_function_timeout(claude, monkeypatch):
+    monkeypatch.setattr(ai_client, "_post", lambda *args: pytest.fail("Deadline must stop the request"))
+    with pytest.raises(AIRequestError, match="time limit reached"):
+        ai_client._call(system="x", user="x", prompt_name="store_copy", as_json=False,
+                        deadline=ai_client.time.monotonic() - 1)

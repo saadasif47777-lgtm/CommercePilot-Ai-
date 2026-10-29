@@ -97,6 +97,7 @@ MODULE_PROMPTS = {
     "campaign_creatives": "marketing",
     "store_copy": "store_architect",
     "product_research": "product_hunting",
+    "market_review": "product_hunting",
 }
 
 
@@ -228,6 +229,7 @@ def _call(
     quality: str = QUALITY_FAST,
     timeout: Optional[float] = None,
     retries: Optional[int] = None,
+    deadline: Optional[float] = None,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
     if not available(prompt_name):
@@ -235,6 +237,8 @@ def _call(
     _budget_check()
     route = route_for(prompt_name, quality)
     model = route.model
+    if route.provider == "anthropic" and deadline is None:
+        deadline = time.monotonic() + 45
     system = system + "\n\n" + UNTRUSTED_SYSTEM_NOTE
 
     def record(input_tokens: int, output_tokens: int, latency: int, status: str) -> None:
@@ -281,9 +285,15 @@ def _call(
     attempts = max(0, int(config.LLM_MAX_RETRIES if retries is None else retries)) + 1
 
     for attempt in range(attempts):
+        call_timeout = request_timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining < 1:
+                raise AIRequestError("Claude response time limit reached. Please retry with a shorter request.")
+            call_timeout = min(call_timeout, remaining)
         started = time.time()
         try:
-            resp = _post(url, headers, payload, request_timeout)
+            resp = _post(url, headers, payload, call_timeout)
         except (httpx.TimeoutException, httpx.HTTPError) as exc:
             latency = int((time.time() - started) * 1000)
             record(0, 0, latency, "failed_transport")
@@ -380,6 +390,9 @@ def complete_json(
             raise AIConfigError("No AI provider key configured on the server.")
         return None
     system, _version = load_prompt(prompt_name, version)
+    # Share one deadline across the initial answer, transport retries and JSON
+    # repair so Claude cannot exceed the deployment's 60-second function limit.
+    deadline = time.monotonic() + 45 if route_for(prompt_name).provider == "anthropic" else None
     system += "\n\nReturn one JSON object matching this schema. Keep structured fields outside prose strings:\n" + json.dumps(
         schema.model_json_schema(), separators=(",", ":")
     )
@@ -393,6 +406,7 @@ def complete_json(
         quality=quality,
         timeout=timeout,
         retries=retries,
+        deadline=deadline,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -412,6 +426,7 @@ def complete_json(
         quality=quality,
         timeout=timeout,
         retries=retries,
+        deadline=deadline,
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
