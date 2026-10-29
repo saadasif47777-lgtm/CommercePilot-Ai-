@@ -25,7 +25,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
-from .. import config
+from .. import ai, config
+from ..ai.schemas import ProductResearchReview
 from ..schemas import (
     DemandSignal,
     Product,
@@ -610,7 +611,30 @@ def run(req: ResearchRequest) -> ResearchResult:
         if req.currency and any(p.observed_price is not None and p.currency != req.currency for p in scored):
             warnings.append(f"Some prices have another or unconfirmed currency. The {req.currency} price filter and price-fit score were not applied to them; no FX conversion was assumed.")
 
+    review = None
+    if "product_hunting" in config.CLAUDE_MODULES and scored and contains_live:
+        try:
+            review = ai.complete_json(
+                prompt_name="product_research", schema=ProductResearchReview,
+                user=ai.wrap_untrusted("research", json.dumps({
+                    "niche": req.niche, "market": req.market, "audience": req.audience,
+                    "budget": req.budget, "constraints": req.constraints,
+                    "products": [{"id": p.id, "title": p.title, "description": p.description[:300],
+                                  "source_url": p.source_url, "page_kind": p.page_kind,
+                                  "price": p.observed_price, "currency": p.currency,
+                                  "supplier_cost": p.estimated_cost, "demand": p.demand_level,
+                                  "competition": p.competition, "evidence_coverage": p.evidence_coverage}
+                                 for p in scored[:12]],
+                })),
+            )
+        except ai.AIError as exc:
+            # A model outage must not discard successfully retrieved evidence.
+            warnings.append(f"AI evidence review unavailable: {exc} Search results and calculated scores are preserved.")
+    known_ids = {p.id for p in scored}
     return ResearchResult(
+        ai_summary=review.summary if review else "",
+        ai_model=ai.route_for("product_research").model if review else "",
+        ai_reviews={r.product_id: r.guidance for r in review.reviews if r.product_id in known_ids} if review else {},
         mode=req.mode,
         query=query,
         products=scored,

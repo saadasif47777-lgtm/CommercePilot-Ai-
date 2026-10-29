@@ -88,3 +88,13 @@ class AssistantIntent(_Clean):
         "workflow",
         "unknown",
     ]
+
+
+class ProductReview(_Clean):
+    product_id: str = Field(min_length=1, max_length=80)
+    guidance: str = Field(min_length=1, max_length=500)
+
+
+class ProductResearchReview(_Clean):
+    summary: str = Field(min_length=1, max_length=800)
+    reviews: list[ProductReview] = Field(default_factory=list, max_length=12)

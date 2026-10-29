@@ -597,10 +597,16 @@ def import_shopify(project_id: str, payload: dict = Body(...)) -> dict:
 
 
 @app.post("/api/integrations/llm/verify")
-def verify_model() -> dict:
+def verify_model(provider: str = "default") -> dict:
     """Explicit, potentially billable probe using the configured model."""
     from .ai.schemas import AssistantIntent
 
+    if provider == "anthropic":
+        result = ai.verify_anthropic()
+        integrations.mark_verified("llm_anthropic", [config.ANTHROPIC_API_KEY, config.ANTHROPIC_MODEL])
+        return result
+    if provider != "default":
+        raise HTTPException(422, "Unknown AI provider")
     result = ai.complete_json(prompt_name="intent", user="show me the project report", schema=AssistantIntent)
     if result is None:
         raise HTTPException(503, "Model provider is not configured")

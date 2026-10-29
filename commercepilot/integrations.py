@@ -251,6 +251,13 @@ def all_status() -> dict:
             "provider": "OpenAI-compatible API",
             "status": connection_status("llm", [config.LLM_API_KEY, config.LLM_MODEL]),
             "model": config.LLM_MODEL if ai.available() else "",
+            "modules": {
+                module: {"provider": route.provider, "model": route.model,
+                         "status": connection_status("llm_anthropic", [route.api_key, route.model])}
+                for prompt, module in {"campaign_creatives": "marketing", "store_copy": "store_architect", "product_research": "product_hunting"}.items()
+                if module in config.CLAUDE_MODULES
+                for route in [ai.route_for(prompt)]
+            },
             "detail": (
                 "LLM-assisted copy and intent parsing enabled."
                 if ai.available()

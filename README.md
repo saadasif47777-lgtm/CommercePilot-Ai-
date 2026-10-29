@@ -59,12 +59,17 @@ See [.env.example](.env.example) for all variables. Main settings:
 | `APP_MODE` | `production` (default) or explicitly local `demo` |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | Model provider configuration |
 | `LLM_MODEL_STRONG` | Optional separate model for copy generation |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Server-only Claude credentials and model (default `claude-sonnet-5-5`) |
+| `CLAUDE_MODULES` | Comma-separated Claude routes: `marketing,store_architect,product_hunting`; empty preserves the default provider |
+| `ANTHROPIC_TIMEOUT`, `ANTHROPIC_MAX_OUTPUT_TOKENS` | Claude request timeout and output cap (35 seconds / 2400 tokens by default) |
 | `AI_MONTHLY_CAP_USD`, `AI_BUDGET_WARN_PCT` | Estimated usage threshold and warning percentage |
 | `SERPER_API_KEY` | Optional paid search; otherwise key-free DDGS |
 | `DB_PATH`, `SECRETS_DIR` | Persistent database and integration credential directory |
 | `DATABASE_URL`, `CREDENTIAL_ENCRYPTION_KEY` | PostgreSQL connection and encryption key for durable integration credentials |
 | `PUBLIC_URL`, `CORS_ORIGINS` | Public origin and explicit browser origin allowlist |
 | `SHOPIFY_API_VERSION` | Pinned Shopify API version; review before each version's support ends |
+
+Claude module setup: save `ANTHROPIC_API_KEY` as a production secret and deploy. Run `POST /api/integrations/llm/verify?provider=anthropic` to check access before setting `CLAUDE_MODULES=marketing,store_architect,product_hunting` and redeploying. Settings shows each module's model and has a separate Claude verification button. Other modules continue using the default `LLM_*` configuration. Product Hunter uses Claude to review retrieved evidence and suggest verification steps; it never lets the model replace observed prices, supplier costs, demand evidence or calculated scores. Failed AI reviews preserve the retrieved results with a visible warning. Switching models affects new generations; existing saved outputs remain available until regenerated.
 
 The usage threshold is an estimate, not a billing guarantee: model prices vary, concurrent requests can overshoot, and timed-out requests may still be billed. Set provider-side spending limits too.
 

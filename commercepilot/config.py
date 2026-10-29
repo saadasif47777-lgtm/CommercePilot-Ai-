@@ -85,6 +85,12 @@ LLM_MODEL_STRONG = env("LLM_MODEL_STRONG", "")
 LLM_TIMEOUT = float(env("LLM_TIMEOUT", "20"))
 LLM_MAX_RETRIES = int(env("LLM_MAX_RETRIES", "2"))
 LLM_MAX_OUTPUT_TOKENS = int(env("LLM_MAX_OUTPUT_TOKENS", "800"))
+# Dedicated Anthropic route; credentials never replace the default provider key.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+ANTHROPIC_TIMEOUT = float(env("ANTHROPIC_TIMEOUT", "35"))
+ANTHROPIC_MAX_OUTPUT_TOKENS = int(env("ANTHROPIC_MAX_OUTPUT_TOKENS", "2400"))
+CLAUDE_MODULES = {value.strip() for value in env("CLAUDE_MODULES", "").split(",") if value.strip()}
 # Hard monthly spend cap in USD (estimated from token counts). 0 disables it.
 AI_MONTHLY_CAP_USD = float(env("AI_MONTHLY_CAP_USD", "25"))
 # Warn (log line + usage summary flag) once this share of the cap is used.

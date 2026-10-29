@@ -288,6 +288,16 @@ export function ProductHunterPage() {
           />
 
           {research.warnings.length > 0 && <div className="mb-4"><WarningList items={research.warnings} title="Research notes" /></div>}
+          {research.ai_summary && <Card className="mb-5">
+            <SectionTitle title="AI evidence review" subtitle={`Model: ${research.ai_model}. Guidance based on retrieved sources; calculated scores and observed prices stay unchanged.`} />
+            <p className="text-sm leading-relaxed">{research.ai_summary}</p>
+            {Object.keys(research.ai_reviews ?? {}).length > 0 && <details className="mt-3">
+              <summary className="cursor-pointer text-sm font-semibold text-brand">Review guidance by product</summary>
+              <ul className="mt-3 space-y-3">{research.products.filter(p => research.ai_reviews?.[p.id]).map(p => <li key={p.id} className="rounded-lg bg-mist p-3 text-sm">
+                <p className="font-semibold">{p.title}</p><p className="mt-1 leading-relaxed text-muted">{research.ai_reviews?.[p.id]}</p>
+              </li>)}</ul>
+            </details>}
+          </Card>}
           {research.products.some(p => p.page_kind === 'collection') && <Card className="mb-5"><SectionTitle title="Collection sources — choose an individual item" subtitle="These pages contain many listings, so they are kept separate from product candidates and have no single price or product score." /><div className="grid gap-3 sm:grid-cols-2">{research.products.filter(p => p.page_kind === 'collection').map(p => <a key={p.id} href={p.source_url || undefined} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-line p-4 text-sm text-brand"><strong>{p.title} ↗</strong><p className="mt-2 text-muted">Open this collection, choose one item, then paste its product URL above.</p></a>)}</div></Card>}
           {searchSample.length > 0 && searchLive.length > 0 && view === 'cards' && (
             <p className="mb-3 text-xs text-muted">

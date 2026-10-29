@@ -63,6 +63,9 @@ export interface ResearchRequest {
 }
 
 export interface ResearchResult {
+  ai_summary?: string
+  ai_model?: string
+  ai_reviews?: Record<string, string>
   mode: string
   query: string
   products: Product[]
@@ -331,7 +334,7 @@ export interface WorkflowResult {
 }
 
 export interface IntegrationStatus {
-  llm: { provider: string; status: string; model: string; detail: string }
+  llm: { provider: string; status: string; model: string; detail: string; modules?: Record<string, { provider: string; model: string; status: string }> }
   web_search: { provider: string; status: string; detail: string }
   meta: {
     provider: string

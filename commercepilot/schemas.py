@@ -108,6 +108,9 @@ class ResearchRequest(BaseModel):
 
 
 class ResearchResult(BaseModel):
+    ai_summary: str = ""
+    ai_model: str = ""
+    ai_reviews: dict[str, str] = Field(default_factory=dict)
     mode: Literal["sample", "live", "both"]
     query: str = ""
     products: list[Product]
