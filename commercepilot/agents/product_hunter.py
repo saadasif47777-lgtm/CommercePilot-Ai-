@@ -616,6 +616,7 @@ def run(req: ResearchRequest) -> ResearchResult:
         try:
             review = ai.complete_json(
                 prompt_name="product_research", schema=ProductResearchReview,
+                timeout=12, retries=0,
                 user=ai.wrap_untrusted("research", json.dumps({
                     "niche": req.niche, "market": req.market, "audience": req.audience,
                     "budget": req.budget, "constraints": req.constraints,
