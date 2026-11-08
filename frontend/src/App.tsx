@@ -6,7 +6,7 @@
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { request } from './services/api'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, MotionConfig } from 'framer-motion'
 import { ProjectProvider, useProject } from './state/ProjectContext'
 import { Sidebar, TopBar } from './components/Layout'
 const OverviewPage = lazy(() => import('./pages/Overview').then(m => ({ default: m.OverviewPage })))
@@ -29,7 +29,7 @@ function Shell() {
   return (
     <div className="min-h-screen bg-mist">
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
-      <div className="lg:pl-[248px]">
+      <div data-workspace-content className="lg:pl-[248px]">
         <TopBar onMenu={() => setMenuOpen(true)} />
         <main className="px-4 py-6 lg:px-7 lg:py-7">
           {/* Keying the motion wrapper by pathname replays the fade/slide
@@ -68,9 +68,9 @@ function Shell() {
 // ProjectProvider wraps the shell so every page shares the open project.
 export default function App() {
   return (
-    <BrowserRouter>
+    <MotionConfig reducedMotion="user"><BrowserRouter>
       <SignIn><ProjectProvider><Shell /></ProjectProvider></SignIn>
-    </BrowserRouter>
+    </BrowserRouter></MotionConfig>
   )
 }
 

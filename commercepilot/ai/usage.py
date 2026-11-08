@@ -7,6 +7,7 @@ never prompt contents — so the log cannot leak user data.
 from __future__ import annotations
 
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -28,6 +29,14 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     status TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at);
+CREATE TABLE IF NOT EXISTS ai_module_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
+    prompt TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+    status TEXT NOT NULL, latency_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ai_reservations (
+    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, amount REAL NOT NULL
+);
 """
 
 
@@ -36,9 +45,9 @@ def _utcnow() -> str:
 
 
 class UsageLog:
-    def __init__(self, path: Path | str):
+    def __init__(self, path: Path | str, namespace=None):
         self.path = str(path)
-        self._database = Database(path)
+        self._database = Database(path, namespace=namespace)
         self._init_lock = threading.Lock()
         self._initialized = False
         self._init_db()
@@ -67,9 +76,13 @@ class UsageLog:
         latency_ms: int = 0,
         status: str = "ok",
         user_id: Optional[str] = None,
+        reservation: Optional[str] = None,
     ) -> None:
         conn = self._conn()
         with conn:
+            conn.lock_project("ai-month-budget")
+            if reservation:
+                conn.execute("DELETE FROM ai_reservations WHERE id=?", (reservation,))
             conn.execute(
                 "INSERT INTO ai_usage (created_at, provider, model, prompt, user_id, "
                 "input_tokens, output_tokens, est_cost_usd, latency_ms, status) "
@@ -87,6 +100,36 @@ class UsageLog:
                     status,
                 ),
             )
+
+    def reserve(self, amount, cap):
+        """Atomically admit estimated spend, including other in-flight calls.
+
+        Ambiguous transport outcomes retain their reservation for this month.
+        Provider-side controls remain necessary for a hard billing limit.
+        """
+        start = _utcnow()[:7] + "-01"
+        token = uuid.uuid4().hex
+        with self._conn() as conn:
+            conn.lock_project("ai-month-budget")
+            conn.execute("DELETE FROM ai_reservations WHERE created_at<?", (start,))
+            pending = conn.execute("SELECT COALESCE(SUM(amount),0) AS cost FROM ai_reservations").fetchone()["cost"]
+            used = conn.execute("SELECT COALESCE(SUM(est_cost_usd),0) AS cost FROM ai_usage WHERE created_at>=?", (start,)).fetchone()["cost"]
+            if cap > 0 and float(used) + float(pending) + amount > cap:
+                return None
+            conn.execute("INSERT INTO ai_reservations(id,created_at,amount) VALUES (?,?,?)", (token, _utcnow(), amount))
+        return token
+
+    def reserved_cost(self):
+        row = self._conn().execute("SELECT COALESCE(SUM(amount),0) AS cost FROM ai_reservations WHERE created_at>=?", (_utcnow()[:7] + "-01",)).fetchone()
+        return float(row["cost"])
+
+    def record_module(self, prompt, provider, model, status, latency):
+        self._conn().execute("INSERT INTO ai_module_events(created_at,prompt,provider,model,status,latency_ms) VALUES (?,?,?,?,?,?)", (_utcnow(), prompt, provider, model, status, latency))
+
+    def module_status(self, prompt):
+        rows = self._conn().execute("SELECT created_at,provider,model,status,latency_ms FROM ai_module_events WHERE prompt=? ORDER BY id DESC LIMIT 100", (prompt,)).fetchall()
+        return {"last_success": next((row for row in rows if row["status"] == "ok"), None),
+                "last_failure": next((row for row in rows if row["status"].startswith("failed")), None)}
 
     def month_cost(self) -> float:
         """Estimated spend since the first day of the current UTC month."""

@@ -116,7 +116,7 @@ export function AnalyticsPage() {
               label="Gross margin"
               value={unit?.gross_margin_pct != null ? `${unit.gross_margin_pct}%` : 'unknown'}
               sub={unit?.gross_margin_pct != null && unit.gross_margin_pct < 40 ? 'thin margin — be careful' : 'before overheads & fees'}
-              tone={unit?.gross_margin_pct ? (unit.gross_margin_pct >= 40 ? 'good' : 'bad') : 'neutral'}
+              tone={unit?.gross_margin_pct != null ? (unit.gross_margin_pct >= 40 ? 'good' : 'bad') : 'neutral'}
             />
             <Stat
               label="Break-even ROAS"
@@ -256,7 +256,7 @@ export function AnalyticsPage() {
                       <p className="font-semibold text-ink">{label}</p>
                       <p className="mt-1 text-muted">revenue {currency} {(s.revenue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                       <p className={s.net_profit != null && s.net_profit >= 0 ? 'text-brand' : 'text-danger'}>
-                        net {currency} {(s.net_profit ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        net {currency} {s.net_profit == null ? 'not provided' : s.net_profit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </p>
                       <p className="text-muted">ROAS {s.roas != null ? s.roas.toFixed(2) : '—'}</p>
                     </div>

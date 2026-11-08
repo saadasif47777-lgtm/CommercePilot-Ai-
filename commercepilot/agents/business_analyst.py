@@ -107,7 +107,7 @@ def analyze(
         )
     )
     contribution: dict = {**overheads.model_dump(), "currency": currency,
-                          "extra_unit_cost": round(extra_per_unit, 2) if extra_per_unit else None,
+                          "extra_unit_cost": round(extra_per_unit, 2) if any(v is not None for v in (overheads.shipping_cost_per_unit, overheads.packaging_cost_per_unit, overheads.transaction_fee_per_unit)) else None,
                           "contribution_per_unit": None, "markup_pct": None,
                           "break_even_units": None}
     if price is not None and price > 0 and cost is not None:

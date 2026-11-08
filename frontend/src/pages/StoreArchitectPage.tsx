@@ -14,7 +14,7 @@ import { DesignPanel } from '../components/DesignPanel'
 
 export function StoreArchitectPage() {
   const { project, run, busy, error, refreshProject, clearError } = useProject()
-  const [device, setDevice] = useState<'desktop' | 'mobile'>(() => window.matchMedia('(max-width: 640px)').matches ? 'mobile' : 'desktop')
+  const [device, setDevice] = useState<'auto' | 'desktop' | 'mobile'>('auto')
   const spec = project?.store_spec?.generation_mode === 'llm' && !project.store_spec.product?.is_sample_data ? project.store_spec : null
 
   const generate = () =>
@@ -89,22 +89,23 @@ export function StoreArchitectPage() {
                   </span>
                 </div>
                 <div className="flex rounded-lg border border-line p-0.5">
-                  {(['desktop', 'mobile'] as const).map((dev) => (
+                  {(['auto', 'desktop', 'mobile'] as const).map((dev) => (
                     <button
                       key={dev}
                       onClick={() => setDevice(dev)}
                       className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${device === dev ? 'bg-brand text-white' : 'text-muted hover:text-ink'}`}
                     >
-                      {dev === 'desktop' ? 'Desktop' : 'Mobile'}
+                      {dev === 'auto' ? 'Fit' : dev === 'desktop' ? 'Desktop' : 'Mobile'}
                     </button>
                   ))}
                 </div>
               </div>
               <div className="bg-mist p-4">
-                <div className="overflow-hidden rounded-lg border border-line bg-paper">
+                <div className="overflow-x-auto rounded-lg border border-line bg-paper" tabIndex={0} aria-label="Storefront preview; scroll horizontally in Desktop mode">
                   <StorefrontPreview spec={spec} device={device} />
                 </div>
                 <p className="mt-2 text-[11px] text-muted">
+                  {device === 'desktop' && 'Desktop frame: scroll horizontally to explore the full layout. '}
                   Interactive: try the catalog search, add items to the cart and change quantities. Checkout must be configured in your commerce platform before accepting orders.
                 </p>
               </div>

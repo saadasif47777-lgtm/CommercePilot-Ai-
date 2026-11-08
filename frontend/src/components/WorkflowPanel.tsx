@@ -87,35 +87,12 @@ export function RunWorkflowButton() {
   if (!project) return null
   const execute = () => run('workflow', async () => {
     setMessage('')
-    await api.validateBrief(project.id)
-    let current = await api.getProject(project.id)
-    if (!current.selected_product) {
-      if (!current.research?.products?.length) await api.projectResearch(current.id, {
-        niche: current.brief.niche || current.brief.industry, market: current.brief.target_market,
-        audience: current.brief.target_audience, budget: current.brief.budget, mode: 'live',
-        constraints: current.brief.constraints, price_min: current.brief.preferred_price_min, price_max: current.brief.preferred_price_max,
-      })
-      await refreshProject()
-      navigate('/products')
-      return
-    }
     try {
-      if (!current.store_spec || current.steps.store.status !== 'success') {
-        setMessage('Generating storefront copy…')
-        await api.generateStore(current.id)
-      }
-      current = await api.getProject(current.id)
-      if (!current.campaign || current.steps.campaign.status !== 'success') {
-        setMessage('Preparing campaign plan…')
-        await api.generateCampaign(current.id, { budget: current.brief.budget })
-      }
-      current = await api.getProject(current.id)
-      if (!current.analysis || current.steps.analyze.status !== 'success') {
-        setMessage('Calculating economics…')
-        await api.analyze(current.id)
-      }
-      await api.report(current.id, true)
-      setMessage('Your results are ready.')
+      setMessage('Preparing the next saved steps…')
+      const result = await api.runWorkflow(project.id, { auto_select: false, mode: 'live' })
+      if (result.error) throw new Error(result.error.message)
+      if (result.steps.some(step => step.status === 'waiting')) navigate('/products')
+      else setMessage('Your results are ready.')
     } finally { await refreshProject() }
   })
   const briefReady = project.brief.business_name.trim() && (project.brief.niche.trim() || project.brief.industry.trim()) && project.brief.budget > 0

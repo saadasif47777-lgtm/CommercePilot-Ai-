@@ -104,7 +104,7 @@ def test_verified_state_matches_credentials(client, monkeypatch):
 
 def test_shopify_import_checks_currency_and_uses_server_catalog(client, monkeypatch):
     pid = client.post("/api/projects", json={"brief": {"business_name": "Store"}}).json()["id"]
-    monkeypatch.setattr(integrations, "shopify_fetch_products", lambda limit: {"ok": True, "currency": "PKR", "products": [{"id": "gid://shopify/Product/1", "title": "Notebook", "price": "250", "description": "Paper"}]})
+    monkeypatch.setattr(integrations, "shopify_fetch_products", lambda limit, **kwargs: {"ok": True, "currency": "PKR", "products": [{"id": "gid://shopify/Product/1", "title": "Notebook", "price": "250", "description": "Paper"}]})
     response = client.post(f"/api/projects/{pid}/shopify/import", json={"product_id": "gid://shopify/Product/1", "price": 0.01})
     assert response.status_code == 200
     assert response.json()["selected_product"]["observed_price"] == 250

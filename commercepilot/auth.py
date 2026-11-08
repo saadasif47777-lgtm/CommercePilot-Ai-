@@ -19,7 +19,7 @@ oauth.register("google", client_id=config.GOOGLE_CLIENT_ID, client_secret=config
 @router.get("/session")
 def session(request: Request):
     return {"required": config.AUTH_ENABLED, "authenticated": bool(request.session.get("subject")),
-            "name": request.session.get("name", "")}
+            "name": request.session.get("name", ""), "workspace_id": request.session.get("subject") or None}
 
 
 @router.get("/login")

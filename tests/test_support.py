@@ -107,7 +107,8 @@ def test_incomplete_resync_keeps_last_complete_snapshot(support, monkeypatch):
 
 def test_replaced_sync_cannot_promote(support):
     old = shopify.start(support)
-    newer = shopify.start(support)
+    assert shopify.start(support)["sync_id"] == old["sync_id"]
+    newer = shopify.start(support, restart=True)
     with pytest.raises(HTTPException) as error:
         shopify.next_page(support, old["sync_id"])
     assert error.value.status_code == 409 and support.state()["pending"]["id"] == newer["sync_id"]

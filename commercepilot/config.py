@@ -91,7 +91,7 @@ ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 ANTHROPIC_TIMEOUT = float(env("ANTHROPIC_TIMEOUT", "35"))
 ANTHROPIC_MAX_OUTPUT_TOKENS = int(env("ANTHROPIC_MAX_OUTPUT_TOKENS", "2400"))
 CLAUDE_MODULES = {value.strip() for value in env("CLAUDE_MODULES", "").split(",") if value.strip()}
-# Hard monthly spend cap in USD (estimated from token counts). 0 disables it.
+# Estimated monthly spend allowance in USD (estimated from token counts). 0 disables it.
 AI_MONTHLY_CAP_USD = float(env("AI_MONTHLY_CAP_USD", "25"))
 # Warn (log line + usage summary flag) once this share of the cap is used.
 AI_BUDGET_WARN_PCT = float(env("AI_BUDGET_WARN_PCT", "80"))

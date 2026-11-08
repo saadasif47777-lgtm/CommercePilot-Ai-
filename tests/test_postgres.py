@@ -170,3 +170,12 @@ def test_postgres_workspace_namespaces(target):
     assert stores[0][0].get('same-id')['name'] == 'a' * 64
     assert stores[1][0].get('same-id')['name'] == 'b' * 64
     assert stores[0][1] != stores[1][1]
+
+
+def test_postgres_budget_reservations_are_atomic(target):
+    from concurrent.futures import ThreadPoolExecutor
+    logs = [UsageLog(target) for _ in range(8)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        admitted = list(pool.map(lambda log: log.reserve(0.4, 1.0), logs))
+    assert sum(bool(token) for token in admitted) == 2
+    assert logs[0].reserved_cost() == pytest.approx(0.8)

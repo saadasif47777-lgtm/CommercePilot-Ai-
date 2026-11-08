@@ -150,3 +150,41 @@ def test_late_widget_release_does_not_clear_new_reservation(tmp_path):
     support.db.execute("UPDATE support_sessions SET busy_until='2099-01-01' WHERE id_hash=?", (digest(token),))
     support.finish_session(token, old)
     assert support.db.execute('SELECT busy_until FROM support_sessions WHERE id_hash=?', (digest(token),)).fetchone()['busy_until'] == '2099-01-01'
+
+
+def test_unavailable_review_preserves_previous_research(tmp_path, monkeypatch):
+    store = ProjectStore(tmp_path / 'review.sqlite3')
+    project = wf.create_project(store, ProjectCreate(example=True))
+    wf.run_full_workflow(store, project['id'], mode='sample')
+    project = store.get(project['id'])
+    previous = copy.deepcopy(project['research'])
+    attempt = ResearchResult(**dict(previous, ai_review_status='unavailable'))
+    monkeypatch.setattr(wf.product_hunter, 'run', lambda req: attempt)
+    wf.step_research(store, project, ResearchRequest(mode='sample'))
+    stored = store.get(project['id'])
+    assert stored['research'] == previous
+    assert stored['research_attempt']['status'] == 'unreviewed'
+    assert stored['research_attempt']['result']['products']
+    assert stored['report'] == project['report']
+
+
+def test_legacy_migration_is_explicit_non_destructive_and_preserves_revision(tmp_path):
+    from scripts.migrate_legacy_projects import migrate
+    target = tmp_path / 'migration.sqlite3'
+    original = ProjectStore(target)
+    project = wf.create_project(original, ProjectCreate(name='Legacy'))
+    other = wf.create_project(original, ProjectCreate(name='Other client'))
+    owner = 'a' * 64
+    assert migrate(target, owner, [project['id']], apply=False) == 1
+    reset = workspace.set(owner)
+    try:
+        destination = ProjectStore(target)
+        assert destination.count() == 0
+    finally:
+        workspace.reset(reset)
+    migrate(target, owner, [project['id']], apply=True)
+    assert destination.get(project['id']) == original.get(project['id'])
+    assert destination.get(other['id']) is None
+    assert original.count() == 2
+    with pytest.raises(ValueError):
+        migrate(target, owner, [project['id']], apply=True)

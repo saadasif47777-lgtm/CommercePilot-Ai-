@@ -597,24 +597,27 @@ def save_shopify_credentials(payload: ShopifyCredentials) -> dict:
 
 
 @app.post("/api/integrations/shopify/sync")
-def shopify_sync(limit: int = Query(10, ge=1, le=50)) -> dict:
-    return integrations.shopify_fetch_products(limit)
+def shopify_sync(limit: int = Query(10, ge=1, le=50), after: Optional[str] = Query(None, max_length=2048)) -> dict:
+    return integrations.shopify_fetch_products(limit, after=after)
 
 
 @app.get("/api/integrations/meta/insights")
-def meta_insights(date_preset: str = Query("last_30d", pattern="^(last_7d|last_30d|this_month)$")) -> dict:
-    return integrations.meta_insights(date_preset)
+def meta_insights(date_preset: str = Query("last_30d", pattern="^(last_7d|last_30d|this_month)$"), after: Optional[str] = Query(None, max_length=2048)) -> dict:
+    return integrations.meta_insights(date_preset, after=after)
 
 
 @app.post("/api/projects/{project_id}/shopify/import")
 def import_shopify(project_id: str, payload: dict = Body(...)) -> dict:
     project = _project_or_404(project_id)
-    result = integrations.shopify_fetch_products(50)
+    after = payload.get("after")
+    if after is not None and (not isinstance(after, str) or len(after) > 2048):
+        raise HTTPException(422, "Invalid catalog cursor")
+    result = integrations.shopify_fetch_products(50, after=after)
     if not result.get("ok"):
         raise HTTPException(502, result.get("detail", "Shopify catalog unavailable"))
     row = next((p for p in result["products"] if p["id"] == payload.get("product_id")), None)
     if not row:
-        raise HTTPException(404, "Product not found in the first Shopify catalog page")
+        raise HTTPException(404, "Product not found in the selected Shopify catalog page")
     if result.get("currency") != project["brief"]["currency"]:
         raise HTTPException(422, "Shop currency differs from the business currency. Update the business brief first.")
     manual = ManualProductInput(title=row["title"], observed_price=row.get("price"),

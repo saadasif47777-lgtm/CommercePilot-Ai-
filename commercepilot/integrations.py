@@ -135,6 +135,15 @@ def meta_verify(candidate=None) -> dict:
             )
         if resp.status_code == 200:
             data = resp.json()
+            if str(data.get("id", "")).removeprefix("act_") != account.removeprefix("act_"):
+                return {"verified": False, "detail": "Meta returned a different account. Check the account ID."}
+            if candidate is not None:
+                with httpx.Client(timeout=8) as client:
+                    probe = client.get(f"https://graph.facebook.com/{config.META_API_VERSION}/{account}/insights",
+                                       params={"fields": "spend", "date_preset": "last_7d", "limit": 1},
+                                       headers={"Authorization": f"Bearer {token}"})
+                if probe.status_code != 200 or not isinstance(probe.json().get("data"), list):
+                    return {"verified": False, "detail": "The token cannot read reports for this account. Grant ads_read access."}
             if candidate is None:
                 mark_verified("meta", [token, account])
             return {"verified": True, "detail": f"Connected to {data.get('name', 'ad account')}.", "account": data}
@@ -178,7 +187,7 @@ def shopify_status() -> dict:
     }
 
 
-def shopify_fetch_products(limit: int = 10, candidate=None) -> dict:
+def shopify_fetch_products(limit: int = 10, candidate=None, after=None) -> dict:
     saved = candidate if candidate is not None else _saved("shopify")
     domain = (config.SHOPIFY_SHOP_DOMAIN if candidate is None and not workspace.get() else "") or saved.get("shop_domain", "")
     token = (config.SHOPIFY_ADMIN_TOKEN if candidate is None and not workspace.get() else "") or saved.get("admin_token", "")
@@ -191,25 +200,31 @@ def shopify_fetch_products(limit: int = 10, candidate=None) -> dict:
         with httpx.Client(timeout=10) as client:
             resp = client.post(
                 f"https://{clean}/admin/api/{config.SHOPIFY_API_VERSION}/graphql.json",
-                json={"query": """query Catalog($first: Int!) {
-                    shop { currencyCode }
-                    products(first: $first) { nodes {
+                json={"query": """query Catalog($first: Int!, $after: String) {
+                    shop { currencyCode myshopifyDomain }
+                    currentAppInstallation { accessScopes { handle } }
+                    products(first: $first, after: $after) { nodes {
                         id title handle description featuredMedia { preview { image { url } } }
                         variants(first: 1) { nodes { price } }
                     } pageInfo { hasNextPage endCursor } }
-                }""", "variables": {"first": max(1, min(limit, 50))}},
+                }""", "variables": {"first": max(1, min(limit, 50)), "after": after}},
                 headers={"X-Shopify-Access-Token": token},
             )
         if resp.status_code == 200:
             payload = resp.json()
             if payload.get("errors") or not isinstance(payload.get("data"), dict):
                 return {"ok": False, "detail": "Shopify rejected the catalog query. Check read_products scope."}
+            if candidate is not None:
+                shop = payload["data"].get("shop") or {}
+                scopes = {entry["handle"] for entry in (payload["data"].get("currentAppInstallation") or {}).get("accessScopes", [])}
+                if str(shop.get("myshopifyDomain", "")).lower() != clean.lower() or not {"read_products", "write_products"} & scopes:
+                    return {"ok": False, "detail": "Verify this Shopify domain and grant read_products before connecting."}
             catalog = payload["data"]["products"]
             rows = catalog["nodes"]
             if candidate is None:
                 mark_verified("shopify", [domain, token])
             return {"ok": True, "currency": (payload["data"].get("shop") or {}).get("currencyCode"), "count": len(rows), "page_info": catalog["pageInfo"], "products": [
-                {"id": p.get("id"), "title": p.get("title"), "handle": p.get("handle"), "description": (p.get("description") or "")[:2000], "url": f"https://{clean}/products/{p.get('handle')}",
+                {"page_after": after, "id": p.get("id"), "title": p.get("title"), "handle": p.get("handle"), "description": (p.get("description") or "")[:2000], "url": f"https://{clean}/products/{p.get('handle')}",
                  "price": ((p.get("variants") or {}).get("nodes") or [{}])[0].get("price"),
                  "image": (((p.get("featuredMedia") or {}).get("preview") or {}).get("image") or {}).get("url")}
                 for p in rows
@@ -223,7 +238,7 @@ def shopify_fetch_products(limit: int = 10, candidate=None) -> dict:
         return {"ok": False, "detail": f"Could not reach the Shopify store: {exc.__class__.__name__}"}
 
 
-def meta_insights(date_preset="last_30d"):
+def meta_insights(date_preset="last_30d", after=None):
     saved = _saved("meta")
     token = (config.META_ACCESS_TOKEN if not workspace.get() else "") or saved.get("access_token", "")
     account = (config.META_AD_ACCOUNT_ID if not workspace.get() else "") or saved.get("ad_account_id", "")
@@ -232,14 +247,16 @@ def meta_insights(date_preset="last_30d"):
     try:
         with httpx.Client(timeout=15) as client:
             response = client.get(f"https://graph.facebook.com/{config.META_API_VERSION}/{account}/insights",
-                                  params={"fields": "account_name,account_currency,spend,clicks,impressions,date_start,date_stop", "date_preset": date_preset, "level": "account"},
+                                  params={"fields": "account_name,account_currency,spend,clicks,impressions,date_start,date_stop", "date_preset": date_preset, "level": "account", **({"after": after} if after else {})},
                                   headers={"Authorization": f"Bearer {token}"})
         if response.status_code != 200:
             mark_verified("meta", [token, account], False)
             return {"ok": False, "detail": f"Meta reporting returned HTTP {response.status_code}. Check ads_read permission."}
-        rows = response.json()["data"]
+        payload = response.json()
+        rows = payload["data"]
+        paging = payload.get("paging") or {}
         mark_verified("meta", [token, account])
-        return {"ok": True, "source": "Meta Ads Insights", "date_preset": date_preset, "rows": rows,
+        return {"ok": True, "source": "Meta Ads Insights", "date_preset": date_preset, "rows": rows, "next_cursor": (paging.get("cursors") or {}).get("after") if paging.get("next") else None,
                 "detail": "No delivery was reported for this period." if not rows else "Measured account totals; attribution to an individual product is not implied."}
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return {"ok": False, "detail": "Meta reporting is unavailable. Retry or check the account configuration."}
@@ -260,7 +277,10 @@ def all_status() -> dict:
                          if config.ANTHROPIC_API_KEY else None,
             "modules": {
                 module: {"provider": route.provider, "model": route.model,
-                         "status": connection_status("llm_anthropic", [route.api_key, route.model])}
+                         "status": connection_status("llm_anthropic", [route.api_key, route.model]),
+                         "configured": bool(route.api_key),
+                         "requests": ai.client._log().module_status(prompt),
+                         "market_review": ai.client._log().module_status("market_review") if prompt == "product_research" else None}
                 for prompt, module in {"campaign_creatives": "marketing", "store_copy": "store_architect", "product_research": "product_hunting"}.items()
                 if module in config.CLAUDE_MODULES
                 for route in [ai.route_for(prompt)]

@@ -62,6 +62,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null)
   const activeRun = useRef(false)
   const selection = useRef(0)
+  const selectionRequest = useRef<AbortController | null>(null)
   const selectedId = useRef<string | null>(null)
   const refreshGeneration = useRef(0)
   const refreshIntegrations = useCallback(async () => { setIntegrations(await api.integrations()) }, [])
@@ -77,10 +78,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   // than leaving a half-loaded workspace on screen.
   const selectProject = useCallback(async (id: string) => {
     const generation = ++selection.current
+    selectionRequest.current?.abort()
+    const controller = new AbortController()
+    selectionRequest.current = controller
     selectedId.current = id
     setLoading(true)
     try {
-      const p = await api.getProject(id)
+      const p = await api.getProject(id, controller.signal)
       if (generation !== selection.current) return
       if (p.is_example || p.selected_product?.is_sample_data) {
         setProject(null)

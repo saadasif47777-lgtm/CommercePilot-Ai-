@@ -19,6 +19,8 @@ export function CustomerSupportPage() {
   const [notice, setNotice] = useState('')
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const mounted = useRef(true)
+  const pauseSync = useRef(false)
+  const inFlight = useRef(false)
   const [message, setMessage] = useState('')
   const [turns, setTurns] = useState<(ChatTurn & { reply?: SupportReply })[]>([])
   const conversation = useRef<HTMLDivElement>(null)
@@ -36,22 +38,26 @@ export function CustomerSupportPage() {
 
   const update = <K extends keyof SupportSettings>(key: K, value: SupportSettings[K]) => setSettings(current => ({ ...current, [key]: value }))
   async function perform(label: string, action: () => Promise<void>) {
+    if (inFlight.current) return
+    inFlight.current = true
     setBusy(label); setError(''); setNotice('')
     try { await action() } catch (err) { if (mounted.current) setError(errorText(err)) }
-    finally { if (mounted.current) setBusy('') }
+    finally { inFlight.current = false; if (mounted.current) setBusy('') }
   }
   async function sync(resume = false) {
     await perform('sync', async () => {
+      pauseSync.current = false
       let next: SyncProgress = resume && status?.pending
         ? { ...status.pending, complete: false, products: 0, policies: 0 }
         : await supportApi.startSync()
       setProgress(next)
-      while (!next.complete && mounted.current) {
+      while (!next.complete && mounted.current && !pauseSync.current) {
         next = await supportApi.nextPage(next.sync_id)
         if (mounted.current) setProgress(next)
       }
       if (mounted.current) {
         setStatus(await supportApi.status()); setTurns([])
+        if (!next.complete) { setNotice('Sync paused after saving the current page. Your published knowledge is unchanged; resume when ready.'); return }
         setNotice(`Synced ${next.products} published products and ${next.policies} ${next.policies === 1 ? 'policy' : 'policies'}. Test an answer, then enable storefront chat and save.`)
       }
     })
@@ -84,6 +90,7 @@ export function CustomerSupportPage() {
           {status?.reason && <p className="mt-2 text-sm text-warn">{status.reason}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button disabled={!!busy} busy={busy === 'sync'} onClick={() => sync()}>Sync Shopify knowledge</Button>
+            {busy === 'sync' && <Button variant="secondary" onClick={() => { pauseSync.current = true; setNotice('Pausing after this page is saved…') }}>Pause sync</Button>}
             {status?.pending && <Button variant="secondary" disabled={!!busy} onClick={() => sync(true)}>Resume sync</Button>}
           </div>
           {progress && <p role="status" className="mt-3 text-sm text-muted">{progress.complete ? 'Sync complete' : 'Syncing'} · {progress.scanned} products checked · {progress.pages} pages</p>}

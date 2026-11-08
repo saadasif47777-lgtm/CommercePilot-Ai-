@@ -66,6 +66,7 @@ export function ProductHunterPage() {
         await refreshProject()
       } catch (err) {
         setLocalError(errorText(err))
+        await refreshProject()
       }
     })
 
@@ -163,6 +164,10 @@ export function ProductHunterPage() {
         actions={<Link to="/settings"><Button variant="secondary">Import from Shopify</Button></Link>}
       />
 
+      {project?.research_attempt && project.research_attempt.status !== 'success' && <div role="status" className="mb-4 rounded-lg border border-line bg-paper p-4 text-sm">
+        <p>{project.research_attempt.message}</p>
+        {project.research_attempt.result?.products.length ? <details className="mt-2"><summary>Source evidence from this attempt</summary><ul className="mt-2 space-y-2">{project.research_attempt.result.products.map(p => <li key={p.id}>{p.source_url && /^https?:\/\//i.test(p.source_url) ? <a href={p.source_url} target="_blank" rel="noopener noreferrer" className="text-brand underline">{p.title}</a> : p.title}</li>)}</ul></details> : null}
+      </div>}
       {(error || localError) && <ErrorBanner message={localError ?? error ?? ''} onDismiss={() => { setLocalError(null); clearError() }} />}
       <Card className="mb-5"><SectionTitle title="Research an individual product URL" subtitle="Open a collection result, choose a specific item, and paste its public HTTPS product link here. Accessible structured details are saved to your library." /><form className="flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); run('import-url', async () => { if (!project) return; setUrlMessage(''); await request(`/api/projects/${project.id}/products/from-url`, { method: 'POST', body: JSON.stringify({ url: productUrl }) }); await refreshProject(); setUrlMessage('Product details saved to your library. Review the source, select the product and confirm your own economics.') }) }}><div className="min-w-0 flex-1"><Field label="Individual product URL"><Input type="url" required value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://brand.com/products/ceramic-vase" /></Field></div><Button type="submit" disabled={!project || !!busy} busy={busy === 'import-url'}>Read & save product</Button></form>{urlMessage && <p role="status" className="mt-3 text-sm text-brand">{urlMessage}</p>}<p className="mt-3 text-xs text-muted">Restricted pages, login walls and JavaScript-only pricing may need manual entry or Shopify import. Supplier costs are never inferred from a retailer's price.</p></Card>
       <Card className="mb-5">

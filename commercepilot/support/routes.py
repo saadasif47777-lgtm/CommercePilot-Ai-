@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
@@ -29,8 +29,8 @@ def support_settings(payload: Settings):
 
 
 @router.post("/sync/start")
-def sync_start():
-    return shopify.start(get_support_store())
+def sync_start(restart: bool = Query(False)):
+    return shopify.start(get_support_store(), restart=restart)
 
 
 @router.post("/sync/next")

@@ -80,7 +80,7 @@ class Database:
     def execute(self, sql, params=()):
         if self.namespace:
             # Server-derived, immutable namespace, never a browser workspace ID.
-            names = r"\b(projects|integration_verifications|integration_credentials|ai_usage|advisor_sessions|advisor_limits|support_state|support_documents|idx_support_docs|support_sessions|support_limits|idx_projects_updated|idx_ai_usage_created)\b"
+            names = r"\b(projects|integration_verifications|integration_credentials|ai_usage|ai_reservations|ai_module_events|operation_leases|advisor_sessions|advisor_limits|support_state|support_documents|idx_support_docs|support_sessions|support_limits|idx_projects_updated|idx_ai_usage_created)\b"
             sql = re.sub(names, lambda m: "w_" + self.namespace[:24] + "_" + m[0], sql)
 
         if sql == "BEGIN IMMEDIATE":

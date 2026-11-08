@@ -331,7 +331,7 @@ def test_claude_incomplete_output_is_not_accepted(claude, monkeypatch, reason):
     response = _claude_ok()
     response._payload["stop_reason"] = reason
     monkeypatch.setattr(ai_client, "_post", lambda *args: response)
-    with pytest.raises(AIRequestError, match="could not complete"):
+    with pytest.raises(AIRequestError, match="declined" if reason == "refusal" else "output limit"):
         ai_client.complete_json(prompt_name="store_copy", user="x", schema=AssistantIntent)
 
 
@@ -361,3 +361,15 @@ def test_claude_schema_output_is_opt_in(claude, monkeypatch):
     monkeypatch.setattr(ai_client, '_post', lambda url, headers, payload, timeout: calls.append(payload) or _claude_ok())
     ai_client.complete_json(prompt_name='store_copy', user='x', schema=AssistantIntent)
     assert calls[0]['output_config']['format']['schema'] == AssistantIntent.model_json_schema()
+
+
+def test_module_evidence_requires_validated_output(ai, monkeypatch):
+    monkeypatch.setattr(ai_client, '_post', lambda *a: _bad_json())
+    with pytest.raises(ai_client.AIValidationError):
+        ai_client.complete_json(prompt_name='intent', user='x', schema=AssistantIntent)
+    evidence = ai_client._log().module_status('intent')
+    assert evidence['last_success'] is None
+    assert evidence['last_failure'] is not None
+    monkeypatch.setattr(ai_client, '_post', lambda *a: _ok())
+    ai_client.complete_json(prompt_name='intent', user='x', schema=AssistantIntent)
+    assert ai_client._log().module_status('intent')['last_success']['model'] == config.LLM_MODEL

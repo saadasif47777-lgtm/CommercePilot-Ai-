@@ -83,7 +83,7 @@ def main():
                 if "SupportCatalog" in query["query"]:
                     page = catalog([product(2)]) if query.get("variables", {}).get("after") else catalog([product()], "page-2")
                     return httpx.Response(200, json={"data": page})
-                return httpx.Response(200, json={"data": {"shop": {"currencyCode": "PKR"}, "products": {"nodes": [{"id": "gid://shopify/Product/1", "title": "Imported lamp", "handle": "lamp", "description": "Desk lamp", "variants": {"nodes": [{"price": "2000"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": None}}}})
+                return httpx.Response(200, json={"data": {"shop": {"currencyCode": "PKR", "myshopifyDomain": request.url.host}, "currentAppInstallation": {"accessScopes": [{"handle": "read_products"}]}, "products": {"nodes": [{"id": "gid://shopify/Product/1", "title": "Imported lamp", "handle": "lamp", "description": "Desk lamp", "variants": {"nodes": [{"price": "2000"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": None}}}})
             if request.url.path.endswith("/insights"):
                 return httpx.Response(200, json={"data": [{"account_name": "Test account", "account_currency": "PKR", "spend": "1000", "clicks": "100", "impressions": "5000", "date_start": "2026-10-01", "date_stop": "2026-10-23"}]})
             return httpx.Response(200, json={"id": "act_123456", "name": "Test account", "currency": "PKR", "account_status": 1})
