@@ -64,6 +64,7 @@ class Product(BaseModel):
     cost_is_estimate: bool = True
     demand_level: Optional[Literal["low", "medium", "high"]] = None
     demand_signals: list[DemandSignal] = Field(default_factory=list)
+    competitors: list[dict[str, str]] = Field(default_factory=list, description="Cited comparable competitor listings, not verified sales or company scale.")
     competition: Literal["low", "medium", "high", "unknown"] = "unknown"
     audience_fit: Optional[int] = Field(None, ge=0, le=100)
     price_suitability: Optional[int] = Field(None, ge=0, le=100)

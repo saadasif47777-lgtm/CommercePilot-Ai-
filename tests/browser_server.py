@@ -73,7 +73,7 @@ def main():
             return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(data)}}], "usage": {"prompt_tokens": 10, "completion_tokens": 10}})
 
         ai_client._post = model
-        product_hunter.search = lambda *a, **kw: SearchOutcome(results=[SearchResult("Desk lamp PKR 2000", "https://shop.example/lamp", "A desk lamp")], provider="test-transport")
+        product_hunter.search_products = lambda *a, **kw: SearchOutcome(results=[SearchResult("Desk lamp PKR 2000", "https://shop.example/lamp", "A desk lamp")], provider="test-transport")
 
         def transport(request):
             if "myshopify.com" in request.url.host:

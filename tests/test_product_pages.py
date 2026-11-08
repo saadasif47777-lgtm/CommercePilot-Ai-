@@ -125,7 +125,7 @@ def test_redirect_target_is_validated_before_another_connection(monkeypatch):
 
 
 def test_currency_mismatch_is_retained_but_not_compared(monkeypatch):
-    monkeypatch.setattr(ph, "search", lambda *a, **k: SearchOutcome(results=[SearchResult("Vase USD 10", "https://shop.example/products/vase")]))
+    monkeypatch.setattr(ph, "search_products", lambda *a, **k: SearchOutcome(results=[SearchResult("Vase USD 10", "https://shop.example/products/vase")]))
     result = ph.run(ResearchRequest(niche="vase", mode="live", currency="PKR", price_min=1500, price_max=5000))
     assert len(result.products) == 1
     factor = next(f for f in result.products[0].score_breakdown if f.factor == "price_suitability")
@@ -133,7 +133,7 @@ def test_currency_mismatch_is_retained_but_not_compared(monkeypatch):
 
 
 def test_research_enriches_then_filters_and_expands_collections(monkeypatch):
-    monkeypatch.setattr(ph, "search", lambda *a, **k: SearchOutcome(results=[SearchResult("Vases", "https://shop.example/collections/vases")]))
+    monkeypatch.setattr(ph, "search_products", lambda *a, **k: SearchOutcome(results=[SearchResult("Vases", "https://shop.example/collections/vases")]))
     def inspect(urls):
         return [pages.PageFacts(kind="collection", url=url, links=["https://shop.example/products/vase"]) if "/collections/" in url else pages.PageFacts(kind="product", url=url, title="Ceramic vase", price=2500, currency="PKR", price_basis="product structured offer") for url in urls]
     monkeypatch.setattr(ph, "inspect_pages", inspect)

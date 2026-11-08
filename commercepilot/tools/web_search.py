@@ -28,6 +28,7 @@ class SearchResult:
     title: str
     url: str
     snippet: str = ""
+    competitors: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass

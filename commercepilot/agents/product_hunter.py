@@ -36,8 +36,9 @@ from ..schemas import (
     utcnow,
 )
 from ..tools import calculations as calc
+from ..tools.claude_search import search_products
 from ..tools.product_pages import PageFacts, inspect_pages, is_collection_url
-from ..tools.web_search import SearchResult, search
+from ..tools.web_search import SearchResult
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_products.json"
 
@@ -182,6 +183,7 @@ def _live_product(result: SearchResult, index: int) -> Product:
         estimated_cost=None,  # unknown - never invented
         demand_level=None,  # unknown - a search hit is not demand evidence
         demand_signals=signals,
+        competitors=result.competitors,
         competition="unknown",
         audience_fit=None,
         price_suitability=None,
@@ -507,7 +509,7 @@ def run(req: ResearchRequest) -> ResearchResult:
     live_products: list[Product] = []
     contains_live = False
     if req.mode in ("live", "both"):
-        outcome = search(f"{query} buy online", limit=max(req.limit, 6))
+        outcome = search_products(req)
         if outcome.warning:
             warnings.append(outcome.warning)
         if outcome.results:
@@ -624,7 +626,7 @@ def run(req: ResearchRequest) -> ResearchResult:
                                   "source_url": p.source_url, "page_kind": p.page_kind,
                                   "price": p.observed_price, "currency": p.currency,
                                   "supplier_cost": p.estimated_cost, "demand": p.demand_level,
-                                  "competition": p.competition, "evidence_coverage": p.evidence_coverage}
+                                  "competition": p.competition, "competitors": p.competitors[:3], "evidence_coverage": p.evidence_coverage}
                                  for p in scored[:12]],
                 })),
             )

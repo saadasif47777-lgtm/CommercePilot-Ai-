@@ -77,7 +77,7 @@ def test_live_store_has_no_fabricated_sections(production, monkeypatch):
 
 def test_production_research_never_loads_sample(production, monkeypatch):
     from commercepilot.tools.web_search import SearchOutcome
-    monkeypatch.setattr(product_hunter, "search", lambda *a, **kw: SearchOutcome())
+    monkeypatch.setattr(product_hunter, "search_products", lambda *a, **kw: SearchOutcome())
     result = product_hunter.run(ResearchRequest(mode="both"))
     assert result.mode == "live" and result.products == []
     with pytest.raises(ValueError):

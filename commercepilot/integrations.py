@@ -266,7 +266,7 @@ def meta_insights(date_preset="last_30d", after=None):
 # Aggregate
 # --------------------------------------------------------------------------- #
 def all_status() -> dict:
-    search_provider = "Serper API" if config.SERPER_API_KEY else "DuckDuckGo (ddgs, key-free)"
+    search_provider = "Claude Web Search (Product Hunter); external search for Market Intelligence"
     return {
         "llm": {
             "provider": "OpenAI-compatible API",
@@ -294,7 +294,7 @@ def all_status() -> dict:
         "web_search": {
             "provider": search_provider,
             "status": "configured_unverified",
-            "detail": "Live web search for Product Hunter Mode A, with source URLs attached.",
+            "detail": "Product Hunter uses Claude live web search with cited sources. Market Intelligence retains its existing search provider.",
         },
         "meta": meta_status(),
         "shopify": shopify_status(),

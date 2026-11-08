@@ -188,6 +188,13 @@ export function ProductCard({
           >
             <div className="mt-3 space-y-2">
               <ScoreBreakdown factors={product.score_breakdown} coverage={product.evidence_coverage} />
+              {!!product.competitors?.length && <div className="rounded-lg border border-line p-3 text-xs">
+                <p className="mb-2 font-semibold uppercase tracking-wide text-muted">Comparable competitors (scale unverified)</p>
+                {product.competitors.map((competitor, i) => <div key={i} className="mt-2">
+                  <a className="font-medium text-brand underline" href={competitor.url} target="_blank" rel="noopener noreferrer">{competitor.name || "View competitor"}</a>
+                  <p className="mt-1 leading-relaxed text-muted">{competitor.positioning}</p>
+                </div>)}
+              </div>}
               <p className="text-xs leading-relaxed text-muted">{product.ranking_reason}</p>
               {product.demand_signals.length > 0 && (
                 <div className="rounded-lg border border-line p-3">
