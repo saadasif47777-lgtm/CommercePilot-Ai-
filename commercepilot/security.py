@@ -11,7 +11,10 @@ from .deadline import expires
 
 
 async def protect(request, call_next):
-    if config.AUTH_ENABLED and len(config.SESSION_SECRET) < 32:
+    setup_error = getattr(request.app.state, "setup_error", None)
+    if setup_error and request.url.path.startswith(("/api/", "/docs", "/openapi.json", "/redoc")) and request.url.path != "/api/auth/session":
+        return JSONResponse({"detail": setup_error}, status_code=503, headers={"Cache-Control": "no-store"})
+    if config.AUTH_ENABLED and len(config.SESSION_SECRET) < 32 and request.url.path != "/api/auth/session":
         return JSONResponse({"detail": "Client sign-in requires server configuration."}, status_code=503)
     request.state.request_id = uuid.uuid4().hex
     expires.set(time.monotonic() + 50)

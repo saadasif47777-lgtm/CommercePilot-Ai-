@@ -55,11 +55,29 @@ from .workflows import commerce_workflow as wf
 
 @asynccontextmanager
 async def lifespan(app):
-    config.validate_runtime()
-    if config.AUTH_ENABLED and (len(config.SESSION_SECRET) < 32 or not config.PUBLIC_URL.startswith("https://")):
-        raise RuntimeError("Set a strong SESSION_SECRET and HTTPS PUBLIC_URL before enabling client sign-in.")
-    _store().init_db()
-    yield
+    # Keep the session endpoint available to explain deployment setup failures.
+    # Merchant and OAuth routes remain blocked until startup succeeds.
+    app.state.setup_error = None
+    try:
+        try:
+            config.validate_runtime()
+            if config.AUTH_ENABLED:
+                if len(config.SESSION_SECRET) < 32:
+                    raise RuntimeError("Set SESSION_SECRET to at least 32 random characters in Vercel environment settings.")
+                if not config.PUBLIC_URL.startswith("https://"):
+                    raise RuntimeError("Set PUBLIC_URL to the HTTPS address of this application.")
+                if not config.GOOGLE_CLIENT_ID or not config.GOOGLE_CLIENT_SECRET:
+                    raise RuntimeError("Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google sign-in.")
+        except RuntimeError as exc:
+            app.state.setup_error = str(exc)  # validation messages contain names, never values
+        if not app.state.setup_error:
+            try:
+                _store().init_db()
+            except Exception:
+                app.state.setup_error = "The database could not be opened. Check DATABASE_URL and the database service in Vercel settings."
+        yield
+    finally:
+        app.state.setup_error = None
 
 
 app = FastAPI(

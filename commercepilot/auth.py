@@ -18,6 +18,11 @@ oauth.register("google", client_id=config.GOOGLE_CLIENT_ID, client_secret=config
 
 @router.get("/session")
 def session(request: Request):
+    setup_error = getattr(request.app.state, "setup_error", None)
+    if not setup_error and config.AUTH_ENABLED and len(config.SESSION_SECRET) < 32:
+        setup_error = "Set SESSION_SECRET to at least 32 random characters in Vercel environment settings."
+    if setup_error:
+        return {"required": True, "authenticated": False, "setup_error": setup_error}
     return {"required": config.AUTH_ENABLED, "authenticated": bool(request.session.get("subject")),
             "name": request.session.get("name", ""), "workspace_id": request.session.get("subject") or None}
 

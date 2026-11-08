@@ -425,3 +425,15 @@ test('session connection failure shows the reason and retry restores the workspa
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('heading', { name: 'Set up your business' })).toBeVisible()
 })
+
+test('deployment setup failure never opens merchant data', async ({ page }) => {
+  await page.route('**/api/auth/session', route => route.fulfill({ json: {
+    required: true, authenticated: false, setup_error: 'Set SESSION_SECRET in Vercel settings.',
+  } }))
+  let projectRequests = 0
+  page.on('request', request => { if (request.url().includes('/api/projects')) projectRequests++ })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Your workspace needs one more setup step' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('SESSION_SECRET')
+  expect(projectRequests).toBe(0)
+})

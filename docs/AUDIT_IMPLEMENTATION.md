@@ -75,3 +75,20 @@ legacy document migration and database transaction compatibility calls.
 - Serverless startup passed against disposable PostgreSQL with authentication explicitly disabled for that startup transport test. Authentication/isolation have separate regression tests.
 - Gitleaks 8.24.3 (official release, checksum verified), with output redacted: zero findings across repository history and the built frontend. This does not establish that a key shared outside the repository is safe; rotate that key.
 - Tests use provider transports/fixtures. None establishes live Google or provider connectivity.
+
+## Vercel startup recovery
+
+Deployment validation and database initialization failures now leave `/api/auth/session`
+available with a safe `setup_error`. The UI explains the missing configuration instead
+of reporting an unexplained workspace failure. Merchant routes, OAuth entry/callback,
+and health remain unavailable (503) until startup succeeds. Database exception details
+and credentials are never returned. This is a diagnostic recovery screen, not a bypass
+or a substitute for configuring the deployment.
+
+In Vercel, apply variables to the environment being tested (Preview or Production),
+then redeploy. Production validation requires LLM_API_KEY/LLM_MODEL and persistent
+DATABASE_URL; sign-in requires SESSION_SECRET, HTTPS PUBLIC_URL and Google client
+credentials. Integration storage additionally needs CREDENTIAL_ENCRYPTION_KEY.
+Register PUBLIC_URL/api/auth/callback with Google. Use a stable application domain
+for PUBLIC_URL. Open the newly created deployment after redeploying; an older
+immutable deployment URL continues to serve its old build/configuration.
