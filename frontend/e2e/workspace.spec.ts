@@ -413,3 +413,15 @@ test('mobile navigation and storefront cart work from the keyboard', async ({ pa
   expect(await frame.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })
+
+test('session connection failure shows the reason and retry restores the workspace', async ({ page }) => {
+  await page.route('**/api/auth/session', route => route.fulfill({
+    status: 503, json: { detail: 'The workspace service is temporarily unavailable.' },
+  }))
+  await page.goto('/business')
+  await expect(page.getByRole('alert')).toHaveText('The workspace service is temporarily unavailable.')
+  await expect(page.getByRole('heading', { name: 'Set up your business' })).toHaveCount(0)
+  await page.unroute('**/api/auth/session')
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByRole('heading', { name: 'Set up your business' })).toBeVisible()
+})
