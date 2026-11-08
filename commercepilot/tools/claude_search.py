@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .. import ai, config
+from .. import config
+from ..ai import client as ai
 from ..deadline import DeadlineExceeded, remaining
 from .web_search import SearchOutcome, SearchResult
 
