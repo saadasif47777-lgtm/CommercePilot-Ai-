@@ -6,6 +6,15 @@ import tailwindcss from '@tailwindcss/vite'
 // so the browser only ever talks to the exposed preview origin.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  preview: {
+    host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 3000,
