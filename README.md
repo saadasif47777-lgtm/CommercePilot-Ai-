@@ -89,3 +89,13 @@ Unit tests use an isolated demo environment and mocked provider transports. Prod
 CI additionally runs real PostgreSQL persistence/encryption checks and Chromium browser tests through business setup, research, pricing, generation, reporting and integration forms. Browser providers are mocked only inside the dedicated test server; production uses configured live services.
 
 See [deployment](DEPLOYMENT.md), [architecture](docs/architecture.md), and [review findings and remaining release gates](docs/BACKEND_REVIEW.md). Historical proposal and production-plan documents describe earlier prototypes, not the current runtime contract.
+
+## Client sign-in and audit changes
+
+Production now uses Google sign-in with a private workspace per Google account.
+Configure server-side Google OAuth credentials, a strong SESSION_SECRET, the
+HTTPS PUBLIC_URL and CREDENTIAL_ENCRYPTION_KEY before rollout. Legacy shared
+data is retained but is not automatically assigned to a new account.
+See [implementation status and rollout notes](docs/AUDIT_IMPLEMENTATION.md) for
+configuration, verification, migration limitations and outstanding audit work.
+For local demo development only, use APP_MODE=demo and AUTH_ENABLED=false.
