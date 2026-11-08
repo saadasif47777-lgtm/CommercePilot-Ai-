@@ -21,7 +21,7 @@ def test_project_research_uses_and_saves_exact_query(client, monkeypatch):
     def search(query, **kwargs):
         seen.append(query)
         return SearchOutcome(results=[SearchResult("Desk lamp PKR 2000", "https://shop.example/lamp", "A desk lamp")])
-    monkeypatch.setattr(api.product_hunter, "search", search)
+    monkeypatch.setattr(api.product_hunter, "search_products", lambda req: search(api.product_hunter._build_query(req)))
     pid = client.post("/api/projects", json={"brief": {"business_name": "Store", "niche": "home", "budget": 1000}}).json()["id"]
     result = client.post(f"/api/projects/{pid}/research", json={"mode": "live", "niche": "desk lamps", "constraints": ["no batteries"]})
     assert result.status_code == 200
