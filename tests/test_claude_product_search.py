@@ -2,7 +2,6 @@
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from commercepilot import config
 from commercepilot.schemas import ResearchRequest
