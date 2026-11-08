@@ -37,7 +37,8 @@ from ..schemas import (
 )
 from ..tools import calculations as calc
 from ..tools.product_pages import PageFacts, inspect_pages, is_collection_url
-from ..tools.web_search import SearchResult, search
+from ..tools.web_search import SearchResult
+from ..tools.claude_search import search_products
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_products.json"
 
@@ -182,6 +183,7 @@ def _live_product(result: SearchResult, index: int) -> Product:
         estimated_cost=None,  # unknown - never invented
         demand_level=None,  # unknown - a search hit is not demand evidence
         demand_signals=signals,
+        competitors=result.competitors,
         competition="unknown",
         audience_fit=None,
         price_suitability=None,
@@ -507,7 +509,7 @@ def run(req: ResearchRequest) -> ResearchResult:
     live_products: list[Product] = []
     contains_live = False
     if req.mode in ("live", "both"):
-        outcome = search(f"{query} buy online", limit=max(req.limit, 6))
+        outcome = search_products(req)
         if outcome.warning:
             warnings.append(outcome.warning)
         if outcome.results:
