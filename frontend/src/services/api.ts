@@ -9,7 +9,7 @@
 // project is the Vite dev proxy target, which is server-side dev config.
 
 import type {
-  AnalysisResult, AssistantReply, ScenarioInput, BusinessBrief, CampaignPlan, IntegrationStatus,
+  AnalysisResult, ScenarioInput, BusinessBrief, CampaignPlan, IntegrationStatus,
   Product, Project, ProjectSummary, ResearchRequest, ResearchResult, StoreDesign,
   StoreEditResponse, WebsiteSpec, WorkflowResult,
 } from '../types'
@@ -68,12 +68,6 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<{ status: string; llm_mode: string; mode: string }>('/api/health'),
 
-  products: (category?: string) =>
-    request<{ is_sample_data: boolean; disclaimer: string; count: number; products: Product[] }>(
-      `/api/products${category ? `?category=${encodeURIComponent(category)}` : ''}`,
-    ),
-
-  research: (req: ResearchRequest) => post<ResearchResult>('/api/research', req),
   projectResearch: (id: string, req: ResearchRequest) => post<ResearchResult>(`/api/projects/${id}/research`, req),
 
   listProjects: () => request<{ count: number; projects: ProjectSummary[] }>('/api/projects'),
@@ -135,9 +129,8 @@ export const api = {
   runWorkflow: (id: string, payload?: { auto_select?: boolean; mode?: 'sample' | 'live' | 'both'; force?: boolean }) =>
     post<WorkflowResult>(`/api/projects/${id}/run-workflow`, payload ?? {}),
   report: (id: string, refresh = false) =>
-    request<Project['report']>(`/api/projects/${id}/report${refresh ? '?refresh=true' : ''}`),
+    refresh ? post<Project['report']>(`/api/projects/${id}/report`) : request<Project['report']>(`/api/projects/${id}/report`),
 
-  assistant: (id: string, message: string) => post<AssistantReply>(`/api/projects/${id}/assistant`, { message }),
 
   integrations: () => request<IntegrationStatus>('/api/integrations/status'),
   saveMetaCredentials: (payload: { access_token: string; ad_account_id: string; app_id?: string; app_secret?: string }) =>
@@ -159,7 +152,6 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   },
 
-  storeExportUrl: (id: string) => `${API_BASE}/api/projects/${id}/store/export`,
 }
 
 export function errorText(err: unknown): string {

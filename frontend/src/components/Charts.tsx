@@ -116,21 +116,3 @@ export function SpendLine({ analysis }: { analysis: AnalysisResult }) {
     </ResponsiveContainer>
   )
 }
-
-export function SimulationChart({ rows, currency }: { rows: { label: string; spend: number; revenue: number }[]; currency: string }) {
-  const data = rows.filter((r) => r.spend > 0).map((r) => ({ name: r.label, Spend: r.spend, 'Simulated revenue': r.revenue }))
-  if (!data.length) return null
-  return (
-    <ResponsiveContainer width="100%" height={230}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -4, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis dataKey="name" tick={{ ...AXIS, fontSize: 10 }} tickLine={false} axisLine={false} />
-        <YAxis tick={AXIS} tickLine={false} axisLine={false} />
-        <Tooltip formatter={moneyFmt(currency)} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar dataKey="Spend" fill="#C9A227" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Simulated revenue" fill="#0F3D2E" radius={[4, 4, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  )
-}

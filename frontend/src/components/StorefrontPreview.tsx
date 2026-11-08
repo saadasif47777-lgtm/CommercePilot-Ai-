@@ -6,7 +6,7 @@
  * search/filter, product detail, quantity controls, add to cart and a cart
  * drawer with subtotal calculation.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type {
@@ -54,7 +54,15 @@ function heroStyle(style: string, d: WebsiteSpec['design'], device: string): CSS
   return { ...base, gridTemplateColumns: device === 'mobile' ? '1fr' : '1.05fr 0.95fr' }
 }
 
-export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteSpec; device?: 'desktop' | 'mobile' }) {
+export function StorefrontPreview({ spec, device: requestedDevice = 'desktop' }: { spec: WebsiteSpec; device?: 'desktop' | 'mobile' }) {
+  const container = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(true)
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < 640))
+    if (container.current) observer.observe(container.current)
+    return () => observer.disconnect()
+  }, [])
+  const device = narrow ? 'mobile' : requestedDevice
   const d = spec.design
   const sections = spec.sections
   const product = spec.product
@@ -144,12 +152,12 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
   const nav = (header?.nav as unknown as { label: string; href: string }[] | undefined) ?? []
 
   return (
-    <div style={shell}>
+    <div ref={container} style={{ ...shell, overflowWrap: 'anywhere' }}>
       {/* ------------------------------------------------------------ header */}
       {header && header.visible !== false && (
         <header style={{ position: 'sticky', top: 0, zIndex: 30, background: alpha(d.background, 0.94), borderBottom: '1px solid rgba(0,0,0,.07)', backdropFilter: 'blur(8px)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '0 20px', height: 60 }}>
-            <a href="#top" style={{ ...head(17), fontWeight: 700, color: d.primary_color, textDecoration: 'none' }}>{header.logo_text}</a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '12px 20px', minHeight: 60, flexWrap: 'wrap' }}>
+            <a href="#top" style={{ ...head(17), minWidth: 0, flex: '1 1 140px', fontWeight: 700, color: d.primary_color, textDecoration: 'none' }}>{header.logo_text}</a>
             <nav style={{ display: device === 'mobile' ? 'none' : 'flex', gap: 16, flex: 1 }}>
               {nav.map((n) => (
                 <a key={n.label} href={n.href} style={{ fontSize: 13.5, color: d.text_color, opacity: 0.75, textDecoration: 'none' }}>{n.label}</a>

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api, errorText } from '../services/api'
 import { useProject } from '../state/ProjectContext'
-import { Badge, Button, Card, SectionTitle, Select } from './ui'
+import { Badge, Button, Card } from './ui'
 import type { StepState } from '../types'
 
 // Steps in execution order; ids match the keys stored on the project.

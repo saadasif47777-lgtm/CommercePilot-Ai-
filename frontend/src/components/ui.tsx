@@ -4,8 +4,9 @@
 // whole app looks consistent and a visual change is one edit rather than twenty.
 // Colours come from the Tailwind theme tokens defined in `index.css`.
 
+import { useEffect, useId, useRef } from 'react'
 import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 
 /* ------------------------------------------------------------------ Badge */
 // Pill used for provenance and status labels ("SAMPLE", "LIVE", "DEMO").
@@ -299,32 +300,31 @@ export function FadeIn({ children, delay = 0, className = '' }: { children: Reac
 }
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
+  useEffect(() => {
+    const node = dialog.current
+    if (!node || !open) return
+    const previous = document.activeElement as HTMLElement | null
+    node.showModal()
+    return () => { node.close(); previous?.focus() }
+  }, [open])
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-paper p-6 shadow-lift"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">{title}</h3>
-              <button onClick={onClose} className="rounded-lg p-1 text-muted hover:bg-mist-2" aria-label="Close">✕</button>
-            </div>
-            {children}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <dialog ref={dialog} aria-labelledby={titleId} onCancel={onClose}
+      onKeyDown={e => {
+        if (e.key !== 'Tab') return
+        const nodes = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]
+        const first = nodes[0], last = nodes[nodes.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      className="m-auto max-h-[85vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border-0 bg-paper p-6 text-ink shadow-lift backdrop:bg-ink/40">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h3 id={titleId} className="text-lg font-semibold">{title}</h3>
+        <button autoFocus onClick={onClose} className="rounded-lg p-2 hover:bg-mist-2" aria-label="Close">✕</button>
+      </div>
+      {open && children}
+    </dialog>
   )
 }

@@ -14,7 +14,7 @@ import { DesignPanel } from '../components/DesignPanel'
 
 export function StoreArchitectPage() {
   const { project, run, busy, error, refreshProject, clearError } = useProject()
-  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+  const [device, setDevice] = useState<'desktop' | 'mobile'>(() => window.matchMedia('(max-width: 640px)').matches ? 'mobile' : 'desktop')
   const spec = project?.store_spec?.generation_mode === 'llm' && !project.store_spec.product?.is_sample_data ? project.store_spec : null
 
   const generate = () =>
@@ -78,8 +78,8 @@ export function StoreArchitectPage() {
         />
       ) : (
         /* Preview on the left, editing controls on the right. */
-        <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-          <div>
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[1fr_360px]">
+          <div className="min-w-0">
             <Card padded={false} className="overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
                 <div className="flex items-center gap-2">

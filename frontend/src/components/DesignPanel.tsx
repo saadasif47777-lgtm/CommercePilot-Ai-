@@ -5,7 +5,7 @@
 // never sends HTML, so there is no path from a prompt to executed code.
 
 import { useState } from 'react'
-import { api, errorText } from '../services/api'
+import { api } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, Field, Input, Select } from './ui'
 import type { StoreDesign } from '../types'

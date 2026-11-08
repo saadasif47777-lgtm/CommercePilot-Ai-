@@ -45,7 +45,6 @@ function Logo() {
 // sidebar is always visible and the drawer state is ignored.
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { project } = useProject()
-  const loc = useLocation()
 
   return (
     <>
@@ -119,11 +118,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
 // Sticky header: page title, project switcher and the Add New Project action.
 export function TopBar({ onMenu }: { onMenu: () => void }) {
-  const { projects, project, selectProject, createBlankProject } = useProject()
+  const loc = useLocation()
+  const { projects, project, selectProject } = useProject()
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const navigate = useNavigate()
-  const loc = useLocation()
 
   // Add New Project: creates a real, empty project (never the Noor Glow demo),
   // makes it the active project, then opens the existing Settings page where the

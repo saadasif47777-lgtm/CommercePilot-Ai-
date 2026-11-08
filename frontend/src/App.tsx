@@ -3,21 +3,22 @@
 // The sidebar/top bar stay mounted while only the page body animates, which
 // makes navigation feel instant and keeps the project switcher stable.
 
-import { useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { request } from './services/api'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ProjectProvider, useProject } from './state/ProjectContext'
 import { Sidebar, TopBar } from './components/Layout'
-import { OverviewPage } from './pages/Overview'
-import { AssistantPage } from './pages/AssistantPage'
-import { ProductHunterPage } from './pages/ProductHunterPage'
-import { StoreArchitectPage } from './pages/StoreArchitectPage'
-import { MarketingPage } from './pages/MarketingPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { BusinessPage } from './pages/BusinessPage'
-import { CustomerSupportPage } from './pages/CustomerSupportPage'
+const OverviewPage = lazy(() => import('./pages/Overview').then(m => ({ default: m.OverviewPage })))
+const AssistantPage = lazy(() => import('./pages/AssistantPage').then(m => ({ default: m.AssistantPage })))
+const ProductHunterPage = lazy(() => import('./pages/ProductHunterPage').then(m => ({ default: m.ProductHunterPage })))
+const StoreArchitectPage = lazy(() => import('./pages/StoreArchitectPage').then(m => ({ default: m.StoreArchitectPage })))
+const MarketingPage = lazy(() => import('./pages/MarketingPage').then(m => ({ default: m.MarketingPage })))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const BusinessPage = lazy(() => import('./pages/BusinessPage').then(m => ({ default: m.BusinessPage })))
+const CustomerSupportPage = lazy(() => import('./pages/CustomerSupportPage').then(m => ({ default: m.CustomerSupportPage })))
 
 // Shell = sidebar + header + animated page area + footer.
 function Shell() {
@@ -41,7 +42,7 @@ function Shell() {
             >
               {/* One route per workspace step; unknown URLs fall back to the
                   Overview instead of showing a blank screen. */}
-              <Routes location={location}>
+              <RouteBoundary key={location.pathname}><Suspense fallback={<p role="status">Opening your workspace…</p>}><Routes location={location}>
                 <Route path="/" element={<OverviewPage />} />
                 <Route path="/assistant" element={<AssistantPage />} />
                 <Route path="/products" element={<ProductHunterPage />} />
@@ -53,7 +54,7 @@ function Shell() {
                 <Route path="/business" element={<BusinessPage />} />
                 <Route path="/support" element={<CustomerSupportPage />} />
                 <Route path="*" element={<OverviewPage />} />
-              </Routes>
+              </Routes></Suspense></RouteBoundary>
             </motion.div>
         </main>
         <footer className="px-6 pb-6 pt-2 text-center text-[11px] text-muted">
@@ -68,7 +69,23 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <ProjectProvider><Shell /></ProjectProvider>
+      <SignIn><ProjectProvider><Shell /></ProjectProvider></SignIn>
     </BrowserRouter>
   )
+}
+
+class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? <div role="alert">This page could not load. <button onClick={() => window.location.reload()}>Try again</button></div> : this.props.children }
+}
+
+function SignIn({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<{ required: boolean; authenticated: boolean } | null>(null)
+  const [error, setError] = useState(false)
+  useEffect(() => { request<{ required: boolean; authenticated: boolean }>('/api/auth/session').then(setSession).catch(() => setError(true)) }, [])
+  if (error) return <main className="mx-auto max-w-lg p-10"><h1>We couldn't open your workspace</h1><p role="alert">Please try again, or ask your administrator to check sign-in configuration.</p><button onClick={() => window.location.reload()}>Try again</button></main>
+  if (!session) return <p role="status" className="p-10">Opening CommercePilot…</p>
+  if (session.required && !session.authenticated) return <main className="mx-auto max-w-lg px-6 py-24"><p className="text-brand">CommercePilot</p><h1 className="mt-4 text-4xl">A little clarity for your next big idea.</h1><p className="my-6 text-muted">Your products, plans and store — together in your private workspace.</p><a className="inline-block rounded-xl bg-brand px-6 py-3 text-white" href="/api/auth/login">Continue with Google</a></main>
+  return <>{session.required && <button className="fixed bottom-3 right-3 z-40 rounded-lg border border-line bg-paper px-3 py-2 text-sm" onClick={async () => { await request('/api/auth/logout', { method: 'POST' }); localStorage.removeItem('commercepilot.currentProject'); window.location.reload() }}>Sign out</button>}{children}</>
 }
