@@ -626,7 +626,7 @@ def run(req: ResearchRequest) -> ResearchResult:
                                   "source_url": p.source_url, "page_kind": p.page_kind,
                                   "price": p.observed_price, "currency": p.currency,
                                   "supplier_cost": p.estimated_cost, "demand": p.demand_level,
-                                  "competition": p.competition, "evidence_coverage": p.evidence_coverage}
+                                  "competition": p.competition, "competitors": p.competitors[:3], "evidence_coverage": p.evidence_coverage}
                                  for p in scored[:12]],
                 })),
             )
