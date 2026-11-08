@@ -347,3 +347,17 @@ def test_claude_deadline_stops_requests_before_function_timeout(claude, monkeypa
     with pytest.raises(AIRequestError, match="time limit reached"):
         ai_client._call(system="x", user="x", prompt_name="store_copy", as_json=False,
                         deadline=ai_client.time.monotonic() - 1)
+
+
+def test_claude_overload_is_retried(claude, monkeypatch):
+    responses = iter([_Resp(status_code=529), _claude_ok()])
+    monkeypatch.setattr(ai_client, '_post', lambda *a: next(responses))
+    assert ai_client.complete_json(prompt_name='store_copy', user='x', schema=AssistantIntent).intent == 'report'
+
+
+def test_claude_schema_output_is_opt_in(claude, monkeypatch):
+    monkeypatch.setattr(config, 'ANTHROPIC_STRUCTURED_OUTPUT', True)
+    calls = []
+    monkeypatch.setattr(ai_client, '_post', lambda url, headers, payload, timeout: calls.append(payload) or _claude_ok())
+    ai_client.complete_json(prompt_name='store_copy', user='x', schema=AssistantIntent)
+    assert calls[0]['output_config']['format']['schema'] == AssistantIntent.model_json_schema()

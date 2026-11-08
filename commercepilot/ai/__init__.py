@@ -2,7 +2,7 @@
 
 Public surface used by agents:
 
-    from ..ai import complete_json, complete_text, available, mode, AILimitReached
+    from ..ai import complete_json, available, mode, AILimitReached
 
 Design rules enforced here (see docs/PRODUCTION_PLAN.md, Phase 1):
   * the API key never leaves the server;
@@ -26,9 +26,7 @@ from .client import (  # noqa: F401
     AIValidationError,
     available,
     complete_json,
-    complete_text,
     mode,
-    model_for,
     route_for,
     usage_summary,
     verify_anthropic,

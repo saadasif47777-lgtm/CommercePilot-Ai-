@@ -1,6 +1,7 @@
 """Small SQL boundary shared by SQLite and pooled PostgreSQL storage."""
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 import threading
@@ -31,7 +32,9 @@ class Result:
 
 
 class Database:
-    def __init__(self, target):
+    def __init__(self, target, namespace=None):
+        from .auth import workspace
+        self.namespace = workspace.get() if namespace is None else namespace
         self.target = str(target)
         self.postgres = self.target.startswith(("postgres://", "postgresql://"))
         self._local = threading.local()
@@ -75,6 +78,11 @@ class Database:
             self._local.manager.__exit__(kind, value, tb)
 
     def execute(self, sql, params=()):
+        if self.namespace:
+            # Server-derived, immutable namespace, never a browser workspace ID.
+            names = r"\b(projects|integration_verifications|integration_credentials|ai_usage|advisor_sessions|advisor_limits|support_state|support_documents|idx_support_docs|support_sessions|support_limits|idx_projects_updated|idx_ai_usage_created)\b"
+            sql = re.sub(names, lambda m: "w_" + self.namespace[:24] + "_" + m[0], sql)
+
         if sql == "BEGIN IMMEDIATE":
             return None  # __enter__ already started the write transaction.
         if self.postgres:

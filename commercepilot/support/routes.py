@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .. import ai, config
+from ..auth import workspace
+from ..database import Database
 from ..runtime import get_support_store
 from . import service, shopify
 from .models import ChatRequest, NextPage, PreviewRequest, Settings, origin
@@ -47,6 +49,7 @@ def support_preview(payload: PreviewRequest):
 def install(request: Request):
     base = origin(config.PUBLIC_URL or str(request.base_url).rstrip("/"))
     widget_id = get_support_store().state()["widget_id"]
+    registry().execute("INSERT INTO widget_workspaces(widget_id,workspace) VALUES (?,?) ON CONFLICT(widget_id) DO UPDATE SET workspace=excluded.workspace", (widget_id, workspace.get()))
     return {"snippet": f'<script src="{base}/api/support/widget.js" data-widget="{widget_id}" defer></script>',
             "script_url": f"{base}/api/support/widget.js", "widget_id": widget_id}
 
@@ -54,6 +57,12 @@ def install(request: Request):
 @router.get("/widget.js", include_in_schema=False)
 def widget_script():
     return FileResponse(config.PACKAGE_DIR / "support" / "widget.js", media_type="application/javascript")
+
+
+def registry():
+    db = Database(config.DATABASE_URL or config.DB_PATH, namespace="")
+    db.execute("CREATE TABLE IF NOT EXISTS widget_workspaces(widget_id TEXT PRIMARY KEY, workspace TEXT NOT NULL)")
+    return db
 
 
 def widget_state(widget_id):
@@ -75,6 +84,11 @@ async def widget_cors(request, call_next):
     try:
         if not match:
             raise HTTPException(404, "Not found")
+        if config.AUTH_ENABLED:
+            row = await run_in_threadpool(lambda: registry().execute("SELECT workspace FROM widget_workspaces WHERE widget_id=?", (match[1],)).fetchone())
+            if not row:
+                raise HTTPException(404, "Chat widget not found.")
+            workspace.set(row["workspace"])
         _, state = await run_in_threadpool(widget_state, match[1])
         incoming = request.headers.get("origin", "")
         if not incoming and request.headers.get("sec-fetch-site") == "same-origin":
@@ -125,16 +139,19 @@ def widget_session(widget_id: str, request: Request):
 @router.post("/widget/{widget_id}/chat")
 def widget_chat(widget_id: str, payload: ChatRequest, request: Request):
     store, state = widget_state(widget_id)
-    history = store.reserve_session(state, payload.session_token)
+    history, reservation = store.reserve_session(state, payload.session_token)
+    completed = False
     try:
         store.limit("session:" + digest(payload.session_token), 20, 3600)
         store.limit("ip:" + _client_key(request), 60, 3600)
         _daily_limit(store)
         result = service.answer(store, payload.message, history)
         history.extend([{"role": "user", "content": payload.message}, {"role": "assistant", "content": result["answer"]}])
-        store.finish_session(payload.session_token, history)
+        store.finish_session(payload.session_token, reservation, history)
+        completed = True
         return result
     except ai.AIError as exc:
         raise HTTPException(503, "Chat is temporarily unavailable. Please try again or contact the store.") from exc
     finally:
-        store.finish_session(payload.session_token)
+        if not completed:
+            store.finish_session(payload.session_token, reservation)

@@ -12,6 +12,7 @@ import httpx
 from fastapi import HTTPException
 
 from .. import config, integrations
+from ..auth import workspace
 from .models import origin
 from .store import digest, now
 
@@ -61,9 +62,9 @@ def plain_html(text):
 
 def connection():
     saved = integrations._saved("shopify")
-    domain = (config.SHOPIFY_SHOP_DOMAIN or saved.get("shop_domain", "")).strip().lower()
+    domain = ((config.SHOPIFY_SHOP_DOMAIN if not workspace.get() else "") or saved.get("shop_domain", "")).strip().lower()
     domain = domain.removeprefix("https://").rstrip("/")
-    token = config.SHOPIFY_ADMIN_TOKEN or saved.get("admin_token", "")
+    token = (config.SHOPIFY_ADMIN_TOKEN if not workspace.get() else "") or saved.get("admin_token", "")
     if not token or not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.myshopify\.com", domain):
         raise HTTPException(422, "Connect Shopify in Settings & Integrations first, using your myshopify.com domain.")
     return domain, token, digest(json.dumps([domain, token]))

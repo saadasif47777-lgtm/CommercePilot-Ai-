@@ -11,7 +11,6 @@ Responsibilities (all server-side):
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import random
@@ -74,7 +73,7 @@ QUALITY_STRONG = "quality"
 logger = logging.getLogger("commercepilot.ai")
 _budget_warned = False
 
-RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 RETRY_BASE_DELAY = 0.4
 RETRY_MAX_DELAY = 4.0
 
@@ -84,10 +83,18 @@ _usage: Optional[UsageLog] = None
 
 
 def _log() -> UsageLog:
+    from ..auth import workspace
+    from ..runtime import get_store
+    if workspace.get():
+        store = get_store()
+        if not hasattr(store, "_usage_log"):
+            store._usage_log = UsageLog(config.DATABASE_URL or config.DB_PATH)
+        return store._usage_log
     global _usage
     if _usage is None:
         _usage = UsageLog(config.DATABASE_URL or config.DB_PATH)
     return _usage
+
 
 
 # --------------------------------------------------------------------------- #
@@ -133,13 +140,6 @@ def _base_url() -> str:
     if config.LLM_BASE_URL:
         return config.LLM_BASE_URL.rstrip("/")
     return DEFAULT_BASE_URLS.get(_provider(), DEFAULT_BASE_URLS["groq"])
-
-
-def model_for(quality: str = QUALITY_FAST) -> str:
-    """Model to use for a task: strong only when explicitly requested."""
-    if quality == QUALITY_STRONG and config.LLM_MODEL_STRONG:
-        return config.LLM_MODEL_STRONG
-    return config.LLM_MODEL
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
@@ -198,7 +198,7 @@ def _record(
     provider: Optional[str] = None,
 ) -> None:
     # Usage logging must never break a request.
-    with contextlib.suppress(Exception):
+    try:
         _log().record(
             provider=provider or _provider(),
             model=model,
@@ -210,6 +210,8 @@ def _record(
             status=status,
         )
 
+    except Exception:
+        logger.error("AI usage persistence failed; recorded spend may be incomplete")
 
 def _strip_fences(text: str) -> str:
     t = (text or "").strip()
@@ -230,6 +232,7 @@ def _call(
     timeout: Optional[float] = None,
     retries: Optional[int] = None,
     deadline: Optional[float] = None,
+    json_schema: Optional[dict] = None,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
     if not available(prompt_name):
@@ -281,6 +284,8 @@ def _call(
             # Sonnet 5.5 rejects sampling parameters and thinking=disabled.
             payload["thinking"] = {"type": "between_tools"}
             payload["output_config"] = {"effort": "medium"}
+        if json_schema and config.ANTHROPIC_STRUCTURED_OUTPUT:
+            payload.setdefault("output_config", {})["format"] = {"type": "json_schema", "schema": json_schema}
         request_timeout = config.ANTHROPIC_TIMEOUT if timeout is None else timeout
     attempts = max(0, int(config.LLM_MAX_RETRIES if retries is None else retries)) + 1
 
@@ -337,10 +342,12 @@ def _call(
             if attempt < attempts - 1:
                 retry_after = (resp.headers.get("retry-after") or "").strip()
                 delay = (
-                    min(RETRY_MAX_DELAY, float(retry_after))
+                    float(retry_after)
                     if retry_after.isdigit()
                     else min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
                 )
+                if deadline is not None and time.monotonic() + delay + 1 >= deadline:
+                    raise AIRequestError("AI retry would exceed the request time limit. Please try again later.")
                 time.sleep(delay + random.uniform(0, 0.2))
                 continue
             raise AIRequestError("AI service is rate limited or unavailable right now.")
@@ -392,7 +399,8 @@ def complete_json(
     system, _version = load_prompt(prompt_name, version)
     # Share one deadline across the initial answer, transport retries and JSON
     # repair so Claude cannot exceed the deployment's 60-second function limit.
-    deadline = time.monotonic() + 45 if route_for(prompt_name).provider == "anthropic" else None
+    from ..deadline import remaining
+    deadline = time.monotonic() + remaining(45)
     system += "\n\nReturn one JSON object matching this schema. Keep structured fields outside prose strings:\n" + json.dumps(
         schema.model_json_schema(), separators=(",", ":")
     )
@@ -407,6 +415,7 @@ def complete_json(
         timeout=timeout,
         retries=retries,
         deadline=deadline,
+        json_schema=schema.model_json_schema(),
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -427,35 +436,12 @@ def complete_json(
         timeout=timeout,
         retries=retries,
         deadline=deadline,
+        json_schema=schema.model_json_schema(),
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
         return parsed
     raise AIValidationError("AI returned data that did not match the required schema.")
-
-
-def complete_text(
-    *,
-    prompt_name: str,
-    user: str,
-    max_tokens: Optional[int] = None,
-    version: str = "v1",
-    quality: str = QUALITY_FAST,
-) -> Optional[str]:
-    """Free-form completion (short copy). None when no provider is configured."""
-    if not available(prompt_name):
-        if config.production():
-            raise AIConfigError("No AI provider key configured on the server.")
-        return None
-    system, _version = load_prompt(prompt_name, version)
-    return _call(
-        system=system,
-        user=user,
-        prompt_name=prompt_name,
-        as_json=False,
-        max_tokens=max_tokens,
-        quality=quality,
-    ).strip()
 
 
 def verify_anthropic() -> dict[str, Any]:

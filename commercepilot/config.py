@@ -162,3 +162,12 @@ def validate_runtime() -> None:
         raise RuntimeError("Production requires a persistent disk; ephemeral serverless SQLite is unsupported")
     if "*" in CORS_ORIGINS:
         raise RuntimeError("Production CORS_ORIGINS must contain explicit origins")
+
+# Client workspaces require authenticated Google identities in production.
+AUTH_ENABLED = env_bool("AUTH_ENABLED", production())
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET")
+SESSION_SECRET = env("SESSION_SECRET")
+
+# Enable after confirming schema support for the configured Claude model.
+ANTHROPIC_STRUCTURED_OUTPUT = env_bool("ANTHROPIC_STRUCTURED_OUTPUT", False)

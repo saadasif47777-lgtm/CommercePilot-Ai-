@@ -19,7 +19,7 @@ def _cipher():
 
 
 def _db():
-    db = Database(config.DATABASE_URL)
+    db = Database(config.DATABASE_URL or config.DB_PATH)
     db.execute("CREATE TABLE IF NOT EXISTS integration_credentials (provider TEXT PRIMARY KEY, ciphertext TEXT NOT NULL)")
     return db
 

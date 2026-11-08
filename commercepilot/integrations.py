@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import ai, config
+from .auth import workspace
 
 
 def _fingerprint(parts):
@@ -52,7 +53,7 @@ def _mask(value: str) -> str:
 
 
 def _saved(provider: str) -> dict:
-    if config.DATABASE_URL:
+    if config.DATABASE_URL or workspace.get():
         from .credentials import read
         return read(provider)
     path = config.integration_secrets_path(provider)
@@ -65,7 +66,7 @@ def _saved(provider: str) -> dict:
 
 
 def save_credentials(provider: str, data: dict) -> None:
-    if config.DATABASE_URL:
+    if config.DATABASE_URL or workspace.get():
         from .credentials import save
         save(provider, data)
         return
@@ -91,8 +92,8 @@ def save_credentials(provider: str, data: dict) -> None:
 # --------------------------------------------------------------------------- #
 def meta_status() -> dict:
     saved = _saved("meta")
-    token = config.META_ACCESS_TOKEN or saved.get("access_token", "")
-    account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
+    token = (config.META_ACCESS_TOKEN if not workspace.get() else "") or saved.get("access_token", "")
+    account = (config.META_AD_ACCOUNT_ID if not workspace.get() else "") or saved.get("ad_account_id", "")
     return {
         "provider": "Meta Marketing API",
         "status": connection_status("meta", [token, account]),
@@ -119,10 +120,10 @@ def meta_status() -> dict:
     }
 
 
-def meta_verify() -> dict:
-    saved = _saved("meta")
-    token = config.META_ACCESS_TOKEN or saved.get("access_token", "")
-    account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
+def meta_verify(candidate=None) -> dict:
+    saved = candidate if candidate is not None else _saved("meta")
+    token = (config.META_ACCESS_TOKEN if candidate is None and not workspace.get() else "") or saved.get("access_token", "")
+    account = (config.META_AD_ACCOUNT_ID if candidate is None and not workspace.get() else "") or saved.get("ad_account_id", "")
     if not token or not re.fullmatch(r"act_[0-9]+", account):
         return {"verified": False, "detail": "Configure a token and an ad account id such as act_123456789."}
     try:
@@ -134,9 +135,11 @@ def meta_verify() -> dict:
             )
         if resp.status_code == 200:
             data = resp.json()
-            mark_verified("meta", [token, account])
+            if candidate is None:
+                mark_verified("meta", [token, account])
             return {"verified": True, "detail": f"Connected to {data.get('name', 'ad account')}.", "account": data}
-        mark_verified("meta", [token, account], False)
+        if candidate is None:
+            mark_verified("meta", [token, account], False)
         return {"verified": False, "detail": f"Meta verification failed (HTTP {resp.status_code}). Check token permissions."}
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         return {"verified": False, "detail": f"Could not reach graph.facebook.com: {exc.__class__.__name__}"}
@@ -147,8 +150,8 @@ def meta_verify() -> dict:
 # --------------------------------------------------------------------------- #
 def shopify_status() -> dict:
     saved = _saved("shopify")
-    domain = config.SHOPIFY_SHOP_DOMAIN or saved.get("shop_domain", "")
-    token = config.SHOPIFY_ADMIN_TOKEN or saved.get("admin_token", "")
+    domain = (config.SHOPIFY_SHOP_DOMAIN if not workspace.get() else "") or saved.get("shop_domain", "")
+    token = (config.SHOPIFY_ADMIN_TOKEN if not workspace.get() else "") or saved.get("admin_token", "")
     return {
         "provider": "Shopify Admin API",
         "status": connection_status("shopify", [domain, token]),
@@ -175,10 +178,10 @@ def shopify_status() -> dict:
     }
 
 
-def shopify_fetch_products(limit: int = 10) -> dict:
-    saved = _saved("shopify")
-    domain = config.SHOPIFY_SHOP_DOMAIN or saved.get("shop_domain", "")
-    token = config.SHOPIFY_ADMIN_TOKEN or saved.get("admin_token", "")
+def shopify_fetch_products(limit: int = 10, candidate=None) -> dict:
+    saved = candidate if candidate is not None else _saved("shopify")
+    domain = (config.SHOPIFY_SHOP_DOMAIN if candidate is None and not workspace.get() else "") or saved.get("shop_domain", "")
+    token = (config.SHOPIFY_ADMIN_TOKEN if candidate is None and not workspace.get() else "") or saved.get("admin_token", "")
     if not domain or not token:
         return {"ok": False, "detail": "Shopify is not configured (domain or token missing)."}
     clean = domain.replace("https://", "").replace("http://", "").strip("/")
@@ -203,7 +206,8 @@ def shopify_fetch_products(limit: int = 10) -> dict:
                 return {"ok": False, "detail": "Shopify rejected the catalog query. Check read_products scope."}
             catalog = payload["data"]["products"]
             rows = catalog["nodes"]
-            mark_verified("shopify", [domain, token])
+            if candidate is None:
+                mark_verified("shopify", [domain, token])
             return {"ok": True, "currency": (payload["data"].get("shop") or {}).get("currencyCode"), "count": len(rows), "page_info": catalog["pageInfo"], "products": [
                 {"id": p.get("id"), "title": p.get("title"), "handle": p.get("handle"), "description": (p.get("description") or "")[:2000], "url": f"https://{clean}/products/{p.get('handle')}",
                  "price": ((p.get("variants") or {}).get("nodes") or [{}])[0].get("price"),
@@ -221,8 +225,8 @@ def shopify_fetch_products(limit: int = 10) -> dict:
 
 def meta_insights(date_preset="last_30d"):
     saved = _saved("meta")
-    token = config.META_ACCESS_TOKEN or saved.get("access_token", "")
-    account = config.META_AD_ACCOUNT_ID or saved.get("ad_account_id", "")
+    token = (config.META_ACCESS_TOKEN if not workspace.get() else "") or saved.get("access_token", "")
+    account = (config.META_AD_ACCOUNT_ID if not workspace.get() else "") or saved.get("ad_account_id", "")
     if not token or not re.fullmatch(r"act_[0-9]+", account):
         return {"ok": False, "detail": "Connect a Meta ad account first."}
     try:

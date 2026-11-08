@@ -227,9 +227,6 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
                 *(result.warnings or []),
                 f"{original_count - len(result.products)} rejected product(s) hidden from this run.",
             ]
-    project["selected_product"] = None
-    invalidate_outputs(project)
-    project["research"] = result.model_dump()
     if not result.products:
         _set_step(store, project, "research", "error", "No candidates found")
         _finish(store, project, execution.id, "error", errors=result.warnings or ["No products found."])
@@ -249,6 +246,7 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
                 "catalogue plus keyless DuckDuckGo when available. Real market data needs "
                 "SERPER_API_KEY.",
             ]
+    project["research"] = result.model_dump()
     _set_step(
         store, project, "research", "success",
         f"{len(result.products)} candidates ({'live+sample' if result.contains_live_results else 'sample'})",

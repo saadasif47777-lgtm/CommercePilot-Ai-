@@ -86,10 +86,12 @@ def test_postgres_support_snapshot_filters_and_sessions(target, monkeypatch):
     assert len(products) == 1 and products[0]["price"] == "20"
     assert not second.products(state["active"], QueryPlan(intent="products", terms=["%_"]))
     token = first.new_session(state)
-    assert second.reserve_session(state, token) == []
-    second.finish_session(token, [{"role": "user", "content": "A lamp"}])
-    assert first.reserve_session(state, token)[0]["content"] == "A lamp"
-    first.finish_session(token)
+    history, lease = second.reserve_session(state, token)
+    assert history == []
+    second.finish_session(token, lease, [{"role": "user", "content": "A lamp"}])
+    history, lease = first.reserve_session(state, token)
+    assert history[0]["content"] == "A lamp"
+    first.finish_session(token, lease)
 
 
 def test_postgres_support_limit_concurrent_requests(target):
@@ -149,3 +151,22 @@ def test_postgres_advisor_daily_budget_is_replica_safe(target, monkeypatch):
     with ThreadPoolExecutor(max_workers=5) as workers:
         results = list(workers.map(reserve, tokens))
     assert results.count(200) == 3 and results.count(429) == 2
+
+
+def test_postgres_workspace_namespaces(target):
+    from commercepilot.auth import workspace
+    from commercepilot.database import Database
+    from commercepilot.support.store import SupportStore
+    stores = []
+    for subject in ['a' * 64, 'b' * 64]:
+        reset = workspace.set(subject)
+        try:
+            store = ProjectStore(target)
+            store.save({"id": "same-id", "name": subject, "created_at": "", "updated_at": ""})
+            support = SupportStore(Database(target))
+            stores.append((store, support.state()['widget_id']))
+        finally:
+            workspace.reset(reset)
+    assert stores[0][0].get('same-id')['name'] == 'a' * 64
+    assert stores[1][0].get('same-id')['name'] == 'b' * 64
+    assert stores[0][1] != stores[1][1]
