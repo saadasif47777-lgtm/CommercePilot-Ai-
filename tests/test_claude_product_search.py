@@ -2,7 +2,6 @@
 import json
 from types import SimpleNamespace
 
-
 from commercepilot import config
 from commercepilot.schemas import ResearchRequest
 from commercepilot.tools import claude_search as cs
