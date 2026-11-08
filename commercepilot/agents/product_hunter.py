@@ -36,9 +36,9 @@ from ..schemas import (
     utcnow,
 )
 from ..tools import calculations as calc
+from ..tools.claude_search import search_products
 from ..tools.product_pages import PageFacts, inspect_pages, is_collection_url
 from ..tools.web_search import SearchResult
-from ..tools.claude_search import search_products
 
 DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "sample_products.json"
 
