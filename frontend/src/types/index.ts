@@ -33,6 +33,7 @@ export interface Product {
   cost_is_estimate: boolean
   demand_level: 'low' | 'medium' | 'high' | null
   demand_signals: DemandSignal[]
+  competitors?: { name: string; url: string; positioning: string }[]
   competition: 'low' | 'medium' | 'high' | 'unknown'
   audience_fit: number | null
   price_suitability: number | null
