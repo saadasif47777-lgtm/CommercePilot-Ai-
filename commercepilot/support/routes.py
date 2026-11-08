@@ -84,10 +84,8 @@ async def widget_cors(request, call_next):
     try:
         if not match:
             raise HTTPException(404, "Not found")
-        if config.AUTH_ENABLED:
-            row = await run_in_threadpool(lambda: registry().execute("SELECT workspace FROM widget_workspaces WHERE widget_id=?", (match[1],)).fetchone())
-            if not row:
-                raise HTTPException(404, "Chat widget not found.")
+        row = await run_in_threadpool(lambda: registry().execute("SELECT workspace FROM widget_workspaces WHERE widget_id=?", (match[1],)).fetchone())
+        if row:
             workspace.set(row["workspace"])
         _, state = await run_in_threadpool(widget_state, match[1])
         incoming = request.headers.get("origin", "")

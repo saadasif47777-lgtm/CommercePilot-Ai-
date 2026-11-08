@@ -1,4 +1,4 @@
-"""Authenticated merchant boundary and separately scoped public widget guards."""
+"""Shared workspace request safeguards and separately scoped public widget guards."""
 
 import time
 import uuid
@@ -12,19 +12,11 @@ from .deadline import expires
 
 async def protect(request, call_next):
     setup_error = getattr(request.app.state, "setup_error", None)
-    if setup_error and request.url.path.startswith(("/api/", "/docs", "/openapi.json", "/redoc")) and request.url.path != "/api/auth/session":
+    if setup_error and request.url.path.startswith(("/api/", "/docs", "/openapi.json", "/redoc")):
         return JSONResponse({"detail": setup_error}, status_code=503, headers={"Cache-Control": "no-store"})
-    if config.AUTH_ENABLED and len(config.SESSION_SECRET) < 32 and request.url.path != "/api/auth/session":
-        return JSONResponse({"detail": "Client sign-in requires server configuration."}, status_code=503)
     request.state.request_id = uuid.uuid4().hex
     expires.set(time.monotonic() + 50)
-    path = request.url.path
-    public = path.startswith("/api/auth/") or path in {"/api/health", "/api/support/widget.js"}
-    protected = path.startswith(("/api/", "/docs", "/openapi.json", "/redoc"))
-    subject = request.session.get("subject") if config.AUTH_ENABLED else None
-    if config.AUTH_ENABLED and protected and not public and not path.startswith("/api/support/widget/") and not subject:
-        return JSONResponse({"detail": "Sign in to access your workspace."}, status_code=401)
-    workspace.set(subject or "")
+    workspace.set("")
     if request.url.path.startswith("/api/support/widget/"):
         from .support.routes import widget_cors
         response = await widget_cors(request, call_next)

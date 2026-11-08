@@ -3,8 +3,7 @@
 // The sidebar/top bar stay mounted while only the page body animates, which
 // makes navigation feel instant and keeps the project switcher stable.
 
-import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { request } from './services/api'
+import { Component, lazy, Suspense, useState, type ReactNode } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { motion, MotionConfig } from 'framer-motion'
 import { ProjectProvider, useProject } from './state/ProjectContext'
@@ -69,7 +68,7 @@ function Shell() {
 export default function App() {
   return (
     <MotionConfig reducedMotion="user"><BrowserRouter>
-      <SignIn><ProjectProvider><Shell /></ProjectProvider></SignIn>
+      <ProjectProvider><Shell /></ProjectProvider>
     </BrowserRouter></MotionConfig>
   )
 }
@@ -78,15 +77,4 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   render() { return this.state.failed ? <div role="alert">This page could not load. <button onClick={() => window.location.reload()}>Try again</button></div> : this.props.children }
-}
-
-function SignIn({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<{ required: boolean; authenticated: boolean; setup_error?: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => { request<{ required: boolean; authenticated: boolean; setup_error?: string }>('/api/auth/session').then(setSession).catch((error: unknown) => setError(error instanceof Error ? error.message : 'The workspace service is unavailable. Please try again.')) }, [])
-  if (error) return <main className="mx-auto max-w-lg p-10"><h1>We couldn't open your workspace</h1><p role="alert" className="my-4 text-muted">{error}</p><button className="rounded-xl bg-brand px-5 py-3 text-white" onClick={() => window.location.reload()}>Try again</button></main>
-  if (!session) return <p role="status" className="p-10">Opening CommercePilot…</p>
-  if (session.setup_error) return <main className="mx-auto max-w-lg px-6 py-24"><p className="text-brand">CommercePilot</p><h1 className="mt-4 text-3xl">Your workspace needs one more setup step</h1><p role="alert" className="my-6 text-muted">{session.setup_error}</p><p className="mb-6 text-muted">The site owner needs to update this deployment’s environment settings, then redeploy. Your saved workspace stays protected.</p><button className="rounded-xl bg-brand px-5 py-3 text-white" onClick={() => window.location.reload()}>Check again</button></main>
-  if (session.required && !session.authenticated) return <main className="mx-auto max-w-lg px-6 py-24"><p className="text-brand">CommercePilot</p><h1 className="mt-4 text-4xl">A little clarity for your next big idea.</h1><p className="my-6 text-muted">Your products, plans and store — together in your private workspace.</p><a className="inline-block rounded-xl bg-brand px-6 py-3 text-white" href="/api/auth/login">Continue with Google</a></main>
-  return <>{session.required && <button className="fixed bottom-3 right-3 z-40 rounded-lg border border-line bg-paper px-3 py-2 text-sm" onClick={async () => { await request('/api/auth/logout', { method: 'POST' }); localStorage.removeItem('commercepilot.currentProject'); window.location.reload() }}>Sign out</button>}{children}</>
 }

@@ -90,12 +90,11 @@ CI additionally runs real PostgreSQL persistence/encryption checks and Chromium 
 
 See [deployment](DEPLOYMENT.md), [architecture](docs/architecture.md), and [review findings and remaining release gates](docs/BACKEND_REVIEW.md). Historical proposal and production-plan documents describe earlier prototypes, not the current runtime contract.
 
-## Client sign-in and audit changes
+## Shared workspace access
 
-Production now uses Google sign-in with a private workspace per Google account.
-Configure server-side Google OAuth credentials, a strong SESSION_SECRET, the
-HTTPS PUBLIC_URL and CREDENTIAL_ENCRYPTION_KEY before rollout. Legacy shared
-data is retained but is not automatically assigned to a new account.
-See [implementation status and rollout notes](docs/AUDIT_IMPLEMENTATION.md) for
-configuration, verification, migration limitations and outstanding audit work.
-For local demo development only, use APP_MODE=demo and AUTH_ENABLED=false.
+The app opens directly to the existing shared workspace. Login, Google OAuth,
+and session secrets are not required; old authentication variables are ignored.
+Existing projects, credentials, integrations, and namespaced tables are preserved.
+No automatic data migration or reset is performed. Database, AI provider, and
+credential-encryption configuration still apply. Authentication will be added
+later as a separate feature.

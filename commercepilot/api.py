@@ -18,13 +18,11 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
-from starlette.middleware.sessions import SessionMiddleware
 
 from . import ai, config, integrations
 from .advisor.routes import router as advisor_router
 from .agents import product_hunter
 from .assistant import handle as assistant_handle
-from .auth import router as auth_router
 from .credentials import CredentialError
 from .deadline import DeadlineExceeded
 from .runtime import get_store
@@ -55,19 +53,11 @@ from .workflows import commerce_workflow as wf
 
 @asynccontextmanager
 async def lifespan(app):
-    # Keep the session endpoint available to explain deployment setup failures.
-    # Merchant and OAuth routes remain blocked until startup succeeds.
+    # Keep the UI available; API requests report database/runtime failures.
     app.state.setup_error = None
     try:
         try:
             config.validate_runtime()
-            if config.AUTH_ENABLED:
-                if len(config.SESSION_SECRET) < 32:
-                    raise RuntimeError("Set SESSION_SECRET to at least 32 random characters in Vercel environment settings.")
-                if not config.PUBLIC_URL.startswith("https://"):
-                    raise RuntimeError("Set PUBLIC_URL to the HTTPS address of this application.")
-                if not config.GOOGLE_CLIENT_ID or not config.GOOGLE_CLIENT_SECRET:
-                    raise RuntimeError("Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google sign-in.")
         except RuntimeError as exc:
             app.state.setup_error = str(exc)  # validation messages contain names, never values
         if not app.state.setup_error:
@@ -101,9 +91,7 @@ app.add_middleware(
 app.middleware("http")(protect)
 app.include_router(support_router)
 app.include_router(advisor_router)
-app.include_router(auth_router)
-app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET or "local-development-only",
-                   session_cookie="commercepilot_session", https_only=config.AUTH_ENABLED, same_site="lax", max_age=28800)
+
 
 
 @app.exception_handler(DeadlineExceeded)

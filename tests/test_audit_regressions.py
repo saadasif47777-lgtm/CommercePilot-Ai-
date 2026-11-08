@@ -1,12 +1,9 @@
 """Regression coverage for the November audit; providers never receive real calls."""
-import base64
 import copy
-import json
 
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from itsdangerous import TimestampSigner
 
 from commercepilot import config, credentials, runtime
 from commercepilot.api import app
@@ -60,39 +57,29 @@ def test_report_get_is_read_only(tmp_path):
 
 @pytest.fixture
 def merchants(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, 'AUTH_ENABLED', True)
-    monkeypatch.setattr(config, 'SESSION_SECRET', 'x' * 40)
     monkeypatch.setattr(config, 'PUBLIC_URL', 'https://workspace.example')
     monkeypatch.setattr(config, 'DB_PATH', tmp_path / 'merchants.sqlite3')
     monkeypatch.setattr(config, 'DATABASE_URL', '')
     monkeypatch.setattr(config, 'CREDENTIAL_ENCRYPTION_KEY', Fernet.generate_key().decode())
     monkeypatch.setattr(runtime, '_workspaces', {})
-    # The test app's middleware was constructed in demo mode at import.
-    def merchant(subject):
-        client = TestClient(app)
-        cookie = TimestampSigner('local-development-only').sign(base64.b64encode(json.dumps({'subject': subject}).encode())).decode()
-        client.cookies.set('commercepilot_session', cookie)
-        return client
-    yield merchant('a' * 64), merchant('b' * 64)
+    yield
     workspace.set('')
 
 
-def test_anonymous_and_cross_workspace_access(merchants):
-    a, b = merchants
-    anonymous = TestClient(app)
-    for path in ['/api/projects', '/api/integrations/status', '/api/support/status', '/docs']:
-        assert anonymous.get(path).status_code == 401
-    assert anonymous.post('/api/research', json={}).status_code == 401
-    p = a.post('/api/projects', json={'brief': {'business_name': 'Private', 'niche': 'lamps', 'budget': 1000}}).json()
-    assert a.get('/api/projects').json()['count'] == 1
-    assert b.get('/api/projects').json()['count'] == 0
-    for method, path in [('get', ''), ('delete', ''), ('get', '/store/export'), ('post', '/analyze'), ('post', '/report'), ('post', '/run-workflow')]:
-        assert getattr(b, method)(f"/api/projects/{p['id']}{path}").status_code == 404
-    assert a.get(f"/api/projects/{p['id']}").status_code == 200
+def test_old_session_cookie_does_not_restrict_shared_workspace(tmp_path):
+    store = ProjectStore(tmp_path / 'shared.sqlite3')
+    runtime.set_store(store)
+    try:
+        project = wf.create_project(store, ProjectCreate(name='Existing project'))
+        client = TestClient(app)
+        client.cookies.set('commercepilot_session', 'obsolete-session')
+        assert client.get(f"/api/projects/{project['id']}").status_code == 200
+        assert client.get('/api/projects').json()['count'] == 1
+    finally:
+        runtime.reset_store()
 
 
 def test_credentials_and_knowledge_are_partitioned(merchants):
-    a, b = merchants
     for subject, token in [('a' * 64, 'private-a'), ('b' * 64, 'private-b')]:
         reset = workspace.set(subject)
         try:
@@ -105,7 +92,14 @@ def test_credentials_and_knowledge_are_partitioned(merchants):
             assert credentials.read('shopify')['admin_token'] == expected
         finally:
             workspace.reset(reset)
-    assert a.get('/api/support/status').json()['widget_id'] != b.get('/api/support/status').json()['widget_id']
+    ids = []
+    for subject in ['a' * 64, 'b' * 64]:
+        reset = workspace.set(subject)
+        try:
+            ids.append(runtime.get_support_store().state()['widget_id'])
+        finally:
+            workspace.reset(reset)
+    assert ids[0] != ids[1]
 
 
 def test_rejected_credentials_preserve_connection(tmp_path, monkeypatch):
@@ -118,9 +112,8 @@ def test_rejected_credentials_preserve_connection(tmp_path, monkeypatch):
     assert integrations._saved('meta')['access_token'] == 'previous'
 
 
-def test_widget_remains_public_but_origin_scoped_with_auth(merchants, monkeypatch):
+def test_existing_namespaced_widget_remains_origin_scoped_without_auth(merchants, monkeypatch):
     from commercepilot.support import service
-    a, _ = merchants
     reset = workspace.set('a' * 64)
     try:
         support = runtime.get_support_store()
@@ -131,12 +124,13 @@ def test_widget_remains_public_but_origin_scoped_with_auth(merchants, monkeypatc
     finally:
         workspace.reset(reset)
     monkeypatch.setattr(service, 'availability', lambda state: '')
-    widget = a.get('/api/support/install').json()['widget_id']
+    from commercepilot.support.routes import registry
+    widget = state['widget_id']
+    registry().execute('INSERT INTO widget_workspaces(widget_id,workspace) VALUES (?,?)', (widget, 'a' * 64))
     shopper = TestClient(app)
     path = f'/api/support/widget/{widget}/config'
     assert shopper.get(path, headers={'Origin': 'https://store.example'}).status_code == 200
     assert shopper.get(path, headers={'Origin': 'https://other.example'}).status_code == 403
-    assert shopper.get('/api/support/status').status_code == 401
 
 
 def test_late_widget_release_does_not_clear_new_reservation(tmp_path):

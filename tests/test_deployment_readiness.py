@@ -4,31 +4,28 @@ from fastapi.testclient import TestClient
 from commercepilot import api, config
 
 
-def test_missing_session_secret_keeps_setup_visible_and_workspace_closed(monkeypatch):
+def test_auth_environment_variables_no_longer_gate_workspace(monkeypatch, tmp_path):
+    from commercepilot.storage import ProjectStore
     monkeypatch.setattr(config, 'validate_runtime', lambda: None)
-    monkeypatch.setattr(config, 'AUTH_ENABLED', True)
-    monkeypatch.setattr(config, 'SESSION_SECRET', '')
+    monkeypatch.setenv('AUTH_ENABLED', 'true')
+    monkeypatch.setenv('SESSION_SECRET', '')
+    monkeypatch.setenv('GOOGLE_CLIENT_ID', '')
+    monkeypatch.setenv('GOOGLE_CLIENT_SECRET', '')
+    monkeypatch.setattr(api, '_store', lambda: ProjectStore(tmp_path / 'open.sqlite3'))
     with TestClient(api.app) as client:
-        response = client.get('/api/auth/session')
-        assert response.status_code == 200
-        assert response.json()['authenticated'] is False
-        assert 'SESSION_SECRET' in response.json()['setup_error']
-        assert client.get('/api/projects').status_code == 503
-        assert client.get('/api/auth/login').status_code == 503
-        assert client.get('/api/auth/callback').status_code == 503
-        assert client.get('/api/health').status_code == 503
+        assert client.get('/api/projects').status_code == 200
+        assert client.get('/api/health').status_code == 200
+        for path in ['/api/auth/session', '/api/auth/login', '/api/auth/callback']:
+            assert client.get(path).status_code == 404
 
 
 def test_database_failure_does_not_leak_connection_details(monkeypatch):
     monkeypatch.setattr(config, 'validate_runtime', lambda: None)
-    monkeypatch.setattr(config, 'AUTH_ENABLED', False)
     def unavailable():
         raise RuntimeError('postgres://private-user:private-password@private-host')
     monkeypatch.setattr(api, '_store', unavailable)
     with TestClient(api.app) as client:
-        body = client.get('/api/auth/session').json()
-        assert body['required'] is True
-        assert body['authenticated'] is False
-        assert 'DATABASE_URL' in body['setup_error']
-        assert 'private-password' not in str(body)
-        assert client.get('/api/projects').status_code == 503
+        response = client.get('/api/projects')
+        assert response.status_code == 503
+        assert 'DATABASE_URL' in response.json()['detail']
+        assert 'private-password' not in response.text

@@ -1,5 +1,12 @@
 # November audit implementation
 
+**Current access mode:** Authentication is deferred at the owner’s request. The UI
+opens directly to the original shared workspace. Google OAuth routes, session
+cookies, and authentication configuration checks have been removed. Existing
+records and namespaced tables remain untouched; no migration, deletion, or
+credential reset was performed. The authentication/rollout sections below record
+the earlier implementation and no longer describe current access requirements.
+
 Baseline: `a014a78253b9b10f7226d4ce7be744f856446ab4` (the audited commit).
 The older onboarding checkout was fast-forwarded without local source changes.
 

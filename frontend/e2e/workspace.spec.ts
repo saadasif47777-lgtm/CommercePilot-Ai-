@@ -414,26 +414,15 @@ test('mobile navigation and storefront cart work from the keyboard', async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })
 
-test('session connection failure shows the reason and retry restores the workspace', async ({ page }) => {
-  await page.route('**/api/auth/session', route => route.fulfill({
-    status: 503, json: { detail: 'The workspace service is temporarily unavailable.' },
-  }))
+test('workspace opens directly without authentication requests or setup screens', async ({ page }) => {
+  let authRequests = 0
+  await page.route('**/api/auth/**', route => {
+    authRequests++
+    return route.abort()
+  })
   await page.goto('/business')
-  await expect(page.getByRole('alert')).toHaveText('The workspace service is temporarily unavailable.')
-  await expect(page.getByRole('heading', { name: 'Set up your business' })).toHaveCount(0)
-  await page.unroute('**/api/auth/session')
-  await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByRole('heading', { name: 'Set up your business' })).toBeVisible()
-})
-
-test('deployment setup failure never opens merchant data', async ({ page }) => {
-  await page.route('**/api/auth/session', route => route.fulfill({ json: {
-    required: true, authenticated: false, setup_error: 'Set SESSION_SECRET in Vercel settings.',
-  } }))
-  let projectRequests = 0
-  page.on('request', request => { if (request.url().includes('/api/projects')) projectRequests++ })
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Your workspace needs one more setup step' })).toBeVisible()
-  await expect(page.getByRole('alert')).toContainText('SESSION_SECRET')
-  expect(projectRequests).toBe(0)
+  expect(authRequests).toBe(0)
+  await expect(page.getByText('Continue with Google')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Sign out' })).toHaveCount(0)
 })
