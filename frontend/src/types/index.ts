@@ -63,6 +63,7 @@ export interface ResearchRequest {
 }
 
 export interface ResearchResult {
+  ai_review_status?: 'not_requested' | 'available' | 'unavailable'
   ai_summary?: string
   ai_model?: string
   ai_reviews?: Record<string, string>
@@ -290,6 +291,7 @@ export interface Project {
   updated_at: string
   brief: BusinessBrief
   research: ResearchResult | null
+  research_attempt?: { status: string; message: string; result: ResearchResult | null }
   selected_product: Product | null
   store_spec: WebsiteSpec | null
   campaign: CampaignPlan | null
@@ -334,7 +336,7 @@ export interface WorkflowResult {
 }
 
 export interface IntegrationStatus {
-  llm: { provider: string; status: string; model: string; detail: string; anthropic?: { model: string; status: string } | null; modules?: Record<string, { provider: string; model: string; status: string }> }
+  llm: { provider: string; status: string; model: string; detail: string; anthropic?: { model: string; status: string } | null; modules?: Record<string, { provider: string; model: string; status: string; configured?: boolean; requests?: ModuleEvidence; market_review?: ModuleEvidence | null }> }
   web_search: { provider: string; status: string; detail: string }
   meta: {
     provider: string
@@ -366,4 +368,9 @@ export interface AssistantReply {
   applied?: string[]
   workflow?: WorkflowResult
   research?: { count: number; warnings: string[] }
+}
+
+export interface ModuleEvidence {
+  last_success: { created_at: string; model: string; provider: string; status: string; latency_ms: number } | null
+  last_failure: { created_at: string; model: string; provider: string; status: string; latency_ms: number } | null
 }

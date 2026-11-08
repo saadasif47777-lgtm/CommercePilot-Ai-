@@ -252,19 +252,19 @@ class TestIntegrations:
         assert body["meta"]["missing_configuration"]
 
     def test_meta_credentials_never_echoed(self, client, monkeypatch):
-        monkeypatch.setattr(api.integrations, "meta_verify", lambda: {"verified": False, "detail": "Rejected"})
+        monkeypatch.setattr(api.integrations, "meta_verify", lambda **kwargs: {"verified": False, "detail": "Rejected"})
         resp = client.post(
             "/api/integrations/meta/credentials",
             json={"access_token": "EAAGSuperSecretToken123", "ad_account_id": "act_123"},
         )
         body = resp.json()
         assert "EAAGSuperSecretToken123" not in str(body)
-        assert body["saved"] is True
+        assert body["saved"] is False
         assert body["verified"] is False  # fake token cannot verify against Meta
         # and the status view masks it too
         status = client.get("/api/integrations/status").json()
         assert "EAAGSuperSecretToken123" not in str(status)
-        assert status["meta"]["status"] == "configured_unverified"
+        assert status["meta"]["status"] == "not_connected"
 
     def test_shopify_sync_not_configured(self, client):
         body = client.post("/api/integrations/shopify/sync").json()

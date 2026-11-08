@@ -6,18 +6,18 @@ Responsibilities (all server-side):
   * request timeouts and output-token caps;
   * JSON output validated against a Pydantic schema, with exactly one repair
     attempt that feeds the validation error back to the model;
-  * a hard monthly budget checked before every call;
+  * an estimated monthly budget reserved atomically before every call;
   * a usage log (tokens + estimated cost, never prompt contents).
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import random
 import re
 import time
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Optional, Type, TypeVar
 
 import httpx
@@ -38,11 +38,15 @@ class AIConfigError(AIError):
 
 
 class AIBudgetExceeded(AIError):
-    """Hard monthly spend cap reached; callers must degrade honestly."""
+    """Estimated monthly allowance reached; callers must degrade honestly."""
 
 
 class AIRequestError(AIError):
     """Transport or provider failure after retries."""
+
+    def __init__(self, message, category="provider_error"):
+        super().__init__(message)
+        self.category = category
 
 
 class AIValidationError(AIError):
@@ -74,7 +78,7 @@ QUALITY_STRONG = "quality"
 logger = logging.getLogger("commercepilot.ai")
 _budget_warned = False
 
-RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 RETRY_BASE_DELAY = 0.4
 RETRY_MAX_DELAY = 4.0
 
@@ -84,15 +88,36 @@ _usage: Optional[UsageLog] = None
 
 
 def _log() -> UsageLog:
+    from ..auth import workspace
+    from ..runtime import get_store
+    if workspace.get():
+        store = get_store()
+        if not hasattr(store, "_usage_log"):
+            store._usage_log = UsageLog(config.DATABASE_URL or config.DB_PATH)
+        return store._usage_log
     global _usage
     if _usage is None:
         _usage = UsageLog(config.DATABASE_URL or config.DB_PATH)
     return _usage
 
 
+
 # --------------------------------------------------------------------------- #
 # Configuration helpers
 # --------------------------------------------------------------------------- #
+def _billing_log():
+    # Provider keys are shared by the deployment: reserve globally even though
+    # each merchant's usage display and module evidence remain private.
+    from ..auth import workspace
+    from ..runtime import get_store
+    if not workspace.get():
+        return _log()
+    store = get_store()
+    if not hasattr(store, "_billing_log"):
+        store._billing_log = UsageLog(config.DATABASE_URL or config.DB_PATH, namespace="")
+    return store._billing_log
+
+
 MODULE_PROMPTS = {
     "campaign_creatives": "marketing",
     "store_copy": "store_architect",
@@ -135,13 +160,6 @@ def _base_url() -> str:
     return DEFAULT_BASE_URLS.get(_provider(), DEFAULT_BASE_URLS["groq"])
 
 
-def model_for(quality: str = QUALITY_FAST) -> str:
-    """Model to use for a task: strong only when explicitly requested."""
-    if quality == QUALITY_STRONG and config.LLM_MODEL_STRONG:
-        return config.LLM_MODEL_STRONG
-    return config.LLM_MODEL
-
-
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     pin, pout = PRICES.get(model, PRICES["default"])
     return round(input_tokens / 1_000_000 * pin + output_tokens / 1_000_000 * pout, 8)
@@ -171,7 +189,9 @@ def _budget_check() -> None:
 def usage_summary() -> dict[str, Any]:
     summary = _log().summary()
     cap = config.AI_MONTHLY_CAP_USD
-    spent = summary["est_cost_usd"]
+    summary["reserved_usd"] = _log().reserved_cost()
+    summary["budget_basis"] = "Estimated tokens and configured prices; use provider billing limits for a hard cap."
+    spent = summary["est_cost_usd"] + summary["reserved_usd"]
     pct = (spent / cap * 100) if cap > 0 else 0.0
     summary["monthly_cap_usd"] = cap
     summary["remaining_usd"] = round(max(0.0, cap - spent), 6) if cap > 0 else None
@@ -196,19 +216,20 @@ def _record(
     status: str,
     model: str,
     provider: Optional[str] = None,
+    reservation: Optional[str] = None,
 ) -> None:
-    # Usage logging must never break a request.
-    with contextlib.suppress(Exception):
-        _log().record(
-            provider=provider or _provider(),
-            model=model,
-            prompt=prompt_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            est_cost_usd=_estimate_cost(input_tokens, output_tokens, model),
-            latency_ms=latency_ms,
-            status=status,
-        )
+    values = dict(provider=provider or _provider(), model=model, prompt=prompt_name,
+                  input_tokens=input_tokens, output_tokens=output_tokens,
+                  est_cost_usd=_estimate_cost(input_tokens, output_tokens, model),
+                  latency_ms=latency_ms, status=status)
+    try:
+        billing = _billing_log()
+        billing.record(**values, reservation=reservation)
+        local = _log()
+        if local is not billing:
+            local.record(**values)
+    except Exception:
+        logger.error("AI usage persistence failed; reserved spend remains conservative")
 
 
 def _strip_fences(text: str) -> str:
@@ -230,6 +251,7 @@ def _call(
     timeout: Optional[float] = None,
     retries: Optional[int] = None,
     deadline: Optional[float] = None,
+    json_schema: Optional[dict] = None,
 ) -> str:
     """One logical request with retries. Returns the model's text content."""
     if not available(prompt_name):
@@ -241,8 +263,11 @@ def _call(
         deadline = time.monotonic() + 45
     system = system + "\n\n" + UNTRUSTED_SYSTEM_NOTE
 
+    reservation = None
+
     def record(input_tokens: int, output_tokens: int, latency: int, status: str) -> None:
-        _record(prompt_name, input_tokens, output_tokens, latency, status, model, route.provider)
+        _record(prompt_name, input_tokens, output_tokens, latency, status, model, route.provider,
+                reservation if status not in {"failed_transport", "failed_timeout", "failed_response"} else None)
 
     payload: dict[str, Any] = {
         "model": model,
@@ -281,6 +306,8 @@ def _call(
             # Sonnet 5.5 rejects sampling parameters and thinking=disabled.
             payload["thinking"] = {"type": "between_tools"}
             payload["output_config"] = {"effort": "medium"}
+        if json_schema and config.ANTHROPIC_STRUCTURED_OUTPUT:
+            payload.setdefault("output_config", {})["format"] = {"type": "json_schema", "schema": json_schema}
         request_timeout = config.ANTHROPIC_TIMEOUT if timeout is None else timeout
     attempts = max(0, int(config.LLM_MAX_RETRIES if retries is None else retries)) + 1
 
@@ -291,21 +318,30 @@ def _call(
             if remaining < 1:
                 raise AIRequestError("Claude response time limit reached. Please retry with a shorter request.")
             call_timeout = min(call_timeout, remaining)
+        estimate = _estimate_cost(len(json.dumps(payload).encode()) + 1024,
+                                  int(payload.get("max_completion_tokens", payload.get("max_tokens", 800))), model)
+        reservation = _billing_log().reserve(estimate, config.AI_MONTHLY_CAP_USD)
+        if reservation is None:
+            raise AIBudgetExceeded("This request would exceed the estimated AI budget, including pending calls.")
         started = time.time()
         try:
             resp = _post(url, headers, payload, call_timeout)
         except (httpx.TimeoutException, httpx.HTTPError) as exc:
             latency = int((time.time() - started) * 1000)
-            record(0, 0, latency, "failed_transport")
+            record(0, 0, latency, "failed_timeout" if isinstance(exc, httpx.TimeoutException) else "failed_transport")
             if attempt < attempts - 1:
                 time.sleep(
                     min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
                     + random.uniform(0, 0.2)
                 )
                 continue
-            raise AIRequestError("AI service timed out or was unreachable.") from exc
+            raise AIRequestError("AI service timed out or was unreachable.", "timeout" if isinstance(exc, httpx.TimeoutException) else "transport") from exc
 
         latency = int((time.time() - started) * 1000)
+        provider_id = (resp.headers.get("request-id") or resp.headers.get("x-request-id") or "")[:128]
+        provider_id = re.sub(r"[^a-zA-Z0-9_-]", "", provider_id)
+        logger.info("AI request provider=%s model=%s module=%s status=%s latency_ms=%s provider_request_id=%s",
+                    route.provider, model, prompt_name, resp.status_code, latency, provider_id)
 
         if resp.status_code == 200:
             try:
@@ -313,8 +349,8 @@ def _call(
                 if route.provider == "anthropic":
                     if data.get("stop_reason") in {"refusal", "max_tokens"}:
                         usage = data.get("usage") or {}
-                        record(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0), latency, "failed_incomplete")
-                        raise AIRequestError("Claude could not complete the response. Try a shorter request.")
+                        record(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0), latency, "failed_refusal" if data.get("stop_reason") == "refusal" else "failed_truncated")
+                        raise AIRequestError("Claude declined this request." if data.get("stop_reason") == "refusal" else "Claude reached its output limit. Try a shorter request.")
                     content = "".join(block["text"] for block in data["content"] if block.get("type") == "text")
                 else:
                     content = data["choices"][0]["message"]["content"] or ""
@@ -337,19 +373,21 @@ def _call(
             if attempt < attempts - 1:
                 retry_after = (resp.headers.get("retry-after") or "").strip()
                 delay = (
-                    min(RETRY_MAX_DELAY, float(retry_after))
+                    float(retry_after)
                     if retry_after.isdigit()
                     else min(RETRY_MAX_DELAY, RETRY_BASE_DELAY * (2 ** attempt))
                 )
+                if deadline is not None and time.monotonic() + delay + 1 >= deadline:
+                    raise AIRequestError("AI retry would exceed the request time limit. Please try again later.")
                 time.sleep(delay + random.uniform(0, 0.2))
                 continue
-            raise AIRequestError("AI service is rate limited or unavailable right now.")
+            raise AIRequestError("AI service is rate limited or unavailable right now.", "overload" if resp.status_code == 529 else "rate_limit" if resp.status_code == 429 else "provider_error")
 
         record(0, 0, latency, f"failed_{resp.status_code}")
         if route.provider == "anthropic" and resp.status_code == 401:
-            raise AIRequestError("Claude authentication failed. Update the Anthropic API key in the server environment.")
+            raise AIRequestError("Claude authentication failed. Update the Anthropic API key in the server environment.", "authentication")
         if route.provider == "anthropic" and resp.status_code == 403:
-            raise AIRequestError("The Anthropic account does not have permission to use this model.")
+            raise AIRequestError("The Anthropic account does not have permission to use this model.", "permission")
         # Log only allowlisted error codes, never provider messages or generated
         # content (which can contain customer input or credentials).
         try:
@@ -369,6 +407,30 @@ def _call(
 # --------------------------------------------------------------------------- #
 # Public calls
 # --------------------------------------------------------------------------- #
+def observe_module(fn):
+    @wraps(fn)
+    def observed(**kwargs):
+        started = time.monotonic()
+        prompt = kwargs["prompt_name"]
+        route = route_for(prompt, kwargs.get("quality", QUALITY_FAST))
+        status = "ok"
+        try:
+            result = fn(**kwargs)
+            if result is None:
+                status = "unconfigured"
+            return result
+        except Exception as exc:
+            status = "failed_" + getattr(exc, "category", type(exc).__name__)
+            raise
+        finally:
+            try:
+                _log().record_module(prompt, route.provider, route.model, status, int((time.monotonic() - started) * 1000))
+            except Exception:
+                logger.error("Module status persistence failed for %s", prompt)
+    return observed
+
+
+@observe_module
 def complete_json(
     *,
     prompt_name: str,
@@ -392,7 +454,8 @@ def complete_json(
     system, _version = load_prompt(prompt_name, version)
     # Share one deadline across the initial answer, transport retries and JSON
     # repair so Claude cannot exceed the deployment's 60-second function limit.
-    deadline = time.monotonic() + 45 if route_for(prompt_name).provider == "anthropic" else None
+    from ..deadline import remaining
+    deadline = time.monotonic() + remaining(45)
     system += "\n\nReturn one JSON object matching this schema. Keep structured fields outside prose strings:\n" + json.dumps(
         schema.model_json_schema(), separators=(",", ":")
     )
@@ -407,6 +470,7 @@ def complete_json(
         timeout=timeout,
         retries=retries,
         deadline=deadline,
+        json_schema=schema.model_json_schema(),
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
@@ -427,35 +491,12 @@ def complete_json(
         timeout=timeout,
         retries=retries,
         deadline=deadline,
+        json_schema=schema.model_json_schema(),
     )
     parsed, error = _parse_and_validate(text, schema)
     if parsed is not None:
         return parsed
     raise AIValidationError("AI returned data that did not match the required schema.")
-
-
-def complete_text(
-    *,
-    prompt_name: str,
-    user: str,
-    max_tokens: Optional[int] = None,
-    version: str = "v1",
-    quality: str = QUALITY_FAST,
-) -> Optional[str]:
-    """Free-form completion (short copy). None when no provider is configured."""
-    if not available(prompt_name):
-        if config.production():
-            raise AIConfigError("No AI provider key configured on the server.")
-        return None
-    system, _version = load_prompt(prompt_name, version)
-    return _call(
-        system=system,
-        user=user,
-        prompt_name=prompt_name,
-        as_json=False,
-        max_tokens=max_tokens,
-        quality=quality,
-    ).strip()
 
 
 def verify_anthropic() -> dict[str, Any]:

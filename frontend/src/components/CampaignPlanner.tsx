@@ -6,7 +6,7 @@
 // save, so a tampered request cannot store a broken allocation either.
 
 import { useEffect, useState } from 'react'
-import { api, errorText } from '../services/api'
+import { api } from '../services/api'
 import { useProject } from '../state/ProjectContext'
 import { Badge, Button, Card, Field, Input, SectionTitle, Select, WarningList } from './ui'
 import { BudgetDonut } from './Charts'

@@ -18,7 +18,7 @@ type TipValue = string | number | ReadonlyArray<string | number> | undefined
 const moneyFmt =
   (currency: string) =>
   (v: TipValue): string =>
-    `${currency} ${Number(v ?? 0).toLocaleString()}`
+    v == null ? 'Not provided' : `${currency} ${Number(v).toLocaleString()}`
 
 export function ScenarioChart({ analysis }: { analysis: AnalysisResult }) {
   const rows = ['conservative', 'base', 'best']
@@ -26,9 +26,9 @@ export function ScenarioChart({ analysis }: { analysis: AnalysisResult }) {
     .filter(Boolean)
     .map((s) => ({
       name: s.label ?? 'scenario',
-      'Revenue': s.revenue ?? 0,
-      'Net profit': s.net_profit ?? 0,
-      'Ad cost': s.ad_cost ?? 0,
+      'Revenue': s.revenue ?? null,
+      'Net profit': s.net_profit ?? null,
+      'Ad cost': s.ad_cost ?? null,
     }))
   if (!rows.length) return null
   return (
@@ -66,13 +66,13 @@ export function BudgetDonut({ allocations, currency }: { allocations: { label: s
 
 export function ProductComparisonChart({ products, currency }: { products: Product[]; currency: string }) {
   const rows = products
-    .filter((p) => p.observed_price && p.estimated_cost)
+    .filter((p) => p.currency === currency && p.observed_price != null && (p.observed_cost ?? p.estimated_cost) != null)
     .slice(0, 8)
     .map((p) => ({
       name: p.title.length > 22 ? `${p.title.slice(0, 21)}…` : p.title,
       'Selling price': p.observed_price ?? 0,
-      'Est. cost': p.estimated_cost ?? 0,
-      'Gross profit': p.gross_profit ?? 0,
+      'Unit cost': p.observed_cost ?? p.estimated_cost,
+      'Gross profit': p.gross_profit ?? null,
     }))
   if (!rows.length) return null
   return (
@@ -84,7 +84,7 @@ export function ProductComparisonChart({ products, currency }: { products: Produ
         <Tooltip formatter={moneyFmt(currency)} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="Selling price" fill="#0F3D2E" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Est. cost" fill="#C9A227" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="Unit cost" fill="#C9A227" radius={[4, 4, 0, 0]} />
         <Bar dataKey="Gross profit" fill="#2ECC71" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
@@ -95,8 +95,9 @@ export function SpendLine({ analysis }: { analysis: AnalysisResult }) {
   const base = analysis.scenarios.base
   if (!base?.available || !base.assumptions) return null
   const { clicks, conversion_rate_pct, cpc } = base.assumptions
-  const price = analysis.unit_economics.selling_price ?? 0
-  const cost = analysis.unit_economics.product_cost ?? 0
+  const price = analysis.unit_economics.selling_price
+  const cost = analysis.unit_economics.product_cost
+  if (price == null || cost == null || cpc <= 0) return null
   const rows = Array.from({ length: 9 }, (_, i) => {
     const spent = (cpc * clicks * i) / 8
     const conv = (spent / cpc) * (conversion_rate_pct / 100)
@@ -113,24 +114,6 @@ export function SpendLine({ analysis }: { analysis: AnalysisResult }) {
         <Line type="monotone" dataKey="revenue" stroke="#0F3D2E" strokeWidth={2} dot={false} name="Revenue" />
         <Line type="monotone" dataKey="profit" stroke="#2ECC71" strokeWidth={2} dot={false} name="Gross profit after ads" />
       </LineChart>
-    </ResponsiveContainer>
-  )
-}
-
-export function SimulationChart({ rows, currency }: { rows: { label: string; spend: number; revenue: number }[]; currency: string }) {
-  const data = rows.filter((r) => r.spend > 0).map((r) => ({ name: r.label, Spend: r.spend, 'Simulated revenue': r.revenue }))
-  if (!data.length) return null
-  return (
-    <ResponsiveContainer width="100%" height={230}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -4, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-        <XAxis dataKey="name" tick={{ ...AXIS, fontSize: 10 }} tickLine={false} axisLine={false} />
-        <YAxis tick={AXIS} tickLine={false} axisLine={false} />
-        <Tooltip formatter={moneyFmt(currency)} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar dataKey="Spend" fill="#C9A227" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="Simulated revenue" fill="#0F3D2E" radius={[4, 4, 0, 0]} />
-      </BarChart>
     </ResponsiveContainer>
   )
 }

@@ -17,7 +17,7 @@ const NEXT_LINK: Record<string, string> = {
 }
 
 export function OverviewPage() {
-  const { project, projects, loading, busy, error, createProject, createBlankProject, run, clearError, integrations } = useProject()
+  const { project, projects, loading, busy, error, run, clearError, integrations } = useProject()
   const navigate = useNavigate()
 
   // Primary path: a real, empty project. Navigating happens only after the

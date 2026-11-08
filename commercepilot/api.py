@@ -18,12 +18,15 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
+from starlette.middleware.sessions import SessionMiddleware
 
 from . import ai, config, integrations
 from .advisor.routes import router as advisor_router
 from .agents import product_hunter
 from .assistant import handle as assistant_handle
+from .auth import router as auth_router
 from .credentials import CredentialError
+from .deadline import DeadlineExceeded
 from .runtime import get_store
 from .schemas import (
     AnalyzeRequest,
@@ -53,6 +56,8 @@ from .workflows import commerce_workflow as wf
 @asynccontextmanager
 async def lifespan(app):
     config.validate_runtime()
+    if config.AUTH_ENABLED and (len(config.SESSION_SECRET) < 32 or not config.PUBLIC_URL.startswith("https://")):
+        raise RuntimeError("Set a strong SESSION_SECRET and HTTPS PUBLIC_URL before enabling client sign-in.")
     _store().init_db()
     yield
 
@@ -78,6 +83,14 @@ app.add_middleware(
 app.middleware("http")(protect)
 app.include_router(support_router)
 app.include_router(advisor_router)
+app.include_router(auth_router)
+app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET or "local-development-only",
+                   session_cookie="commercepilot_session", https_only=config.AUTH_ENABLED, same_site="lax", max_age=28800)
+
+
+@app.exception_handler(DeadlineExceeded)
+async def deadline_handler(request, exc):
+    return JSONResponse({"detail": str(exc), "request_id": request.state.request_id}, status_code=504)
 
 
 @app.exception_handler(CredentialError)
@@ -521,9 +534,16 @@ def run_workflow(project_id: str, payload: Optional[WorkflowRequest] = None) -> 
 @app.get("/api/projects/{project_id}/report")
 def get_report(project_id: str, refresh: bool = Query(False)) -> dict:
     project = _project_or_404(project_id)
-    if refresh or not project.get("report"):
-        return wf.step_report(_store(), project)
+    if refresh:
+        raise HTTPException(405, "Use POST to regenerate this report.")
+    if not project.get("report"):
+        raise HTTPException(404, "No saved report. Generate a report first.")
     return project["report"]
+
+
+@app.post("/api/projects/{project_id}/report")
+def regenerate_report(project_id: str) -> dict:
+    return _run_step(project_id, wf.step_report)
 
 
 @app.post("/api/projects/{project_id}/assistant")
@@ -547,8 +567,11 @@ def integration_status() -> dict:
 
 @app.post("/api/integrations/meta/credentials")
 def save_meta_credentials(payload: MetaCredentials) -> dict:
+    verification = integrations.meta_verify(candidate=payload.model_dump())
+    if not verification.get("verified"):
+        return {"saved": False, **verification}
     integrations.save_credentials("meta", payload.model_dump())
-    verification = integrations.meta_verify()
+    integrations.mark_verified("meta", [payload.access_token, payload.ad_account_id])
     return {
         "saved": True,
         "stored_server_side": True,
@@ -565,30 +588,36 @@ def verify_meta() -> dict:
 
 @app.post("/api/integrations/shopify/credentials")
 def save_shopify_credentials(payload: ShopifyCredentials) -> dict:
+    result = integrations.shopify_fetch_products(limit=1, candidate=payload.model_dump())
+    if not result.get("ok"):
+        return {"saved": False, "verified": False, "detail": result.get("detail", "Verification failed.")}
     integrations.save_credentials("shopify", payload.model_dump())
-    result = integrations.shopify_fetch_products(limit=1)
+    integrations.mark_verified("shopify", [payload.shop_domain, payload.admin_token])
     return {"saved": True, "verified": bool(result.get("ok")), "detail": result.get("detail", "Token accepted.")}
 
 
 @app.post("/api/integrations/shopify/sync")
-def shopify_sync(limit: int = Query(10, ge=1, le=50)) -> dict:
-    return integrations.shopify_fetch_products(limit)
+def shopify_sync(limit: int = Query(10, ge=1, le=50), after: Optional[str] = Query(None, max_length=2048)) -> dict:
+    return integrations.shopify_fetch_products(limit, after=after)
 
 
 @app.get("/api/integrations/meta/insights")
-def meta_insights(date_preset: str = Query("last_30d", pattern="^(last_7d|last_30d|this_month)$")) -> dict:
-    return integrations.meta_insights(date_preset)
+def meta_insights(date_preset: str = Query("last_30d", pattern="^(last_7d|last_30d|this_month)$"), after: Optional[str] = Query(None, max_length=2048)) -> dict:
+    return integrations.meta_insights(date_preset, after=after)
 
 
 @app.post("/api/projects/{project_id}/shopify/import")
 def import_shopify(project_id: str, payload: dict = Body(...)) -> dict:
     project = _project_or_404(project_id)
-    result = integrations.shopify_fetch_products(50)
+    after = payload.get("after")
+    if after is not None and (not isinstance(after, str) or len(after) > 2048):
+        raise HTTPException(422, "Invalid catalog cursor")
+    result = integrations.shopify_fetch_products(50, after=after)
     if not result.get("ok"):
         raise HTTPException(502, result.get("detail", "Shopify catalog unavailable"))
     row = next((p for p in result["products"] if p["id"] == payload.get("product_id")), None)
     if not row:
-        raise HTTPException(404, "Product not found in the first Shopify catalog page")
+        raise HTTPException(404, "Product not found in the selected Shopify catalog page")
     if result.get("currency") != project["brief"]["currency"]:
         raise HTTPException(422, "Shop currency differs from the business currency. Update the business brief first.")
     manual = ManualProductInput(title=row["title"], observed_price=row.get("price"),

@@ -1,3 +1,4 @@
+
 """Bounded public product-page research. No JavaScript, login or bot bypass.
 
 HTTPS connections are pinned to a validated public IP, including every redirect,
@@ -12,11 +13,14 @@ import socket
 import ssl
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
+
+from ..deadline import remaining
 
 AGENT = "CommercePilotResearch/1.0"
 MAX_BYTES = 1_500_000
@@ -52,8 +56,8 @@ def public_target(url):
 def read_public(url, redirects=2, max_bytes=MAX_BYTES):
     for _ in range(redirects + 1):
         host, address, parts = public_target(url)
-        conn = http.client.HTTPSConnection(host, timeout=4)
-        raw = socket.create_connection((address, 443), timeout=4)
+        conn = http.client.HTTPSConnection(host, timeout=remaining(4))
+        raw = socket.create_connection((address, 443), timeout=remaining(4))
         try:
             tls = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
             conn.sock = tls
@@ -73,12 +77,12 @@ def read_public(url, redirects=2, max_bytes=MAX_BYTES):
             if response.getheader("content-encoding", "identity") != "identity":
                 raise PageError("Source encoding is not supported.")
             chunks, size = [], 0
-            deadline = time.monotonic() + 6
+            deadline = time.monotonic() + remaining(6)
             while size <= max_bytes:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
+                read_remaining = deadline - time.monotonic()
+                if read_remaining <= 0:
                     raise PageError("Source exceeded the read deadline.")
-                tls.settimeout(min(4, remaining))
+                tls.settimeout(min(4, read_remaining))
                 chunk = response.read1(min(65536, max_bytes + 1 - size))
                 if not chunk:
                     break
@@ -249,4 +253,5 @@ def inspect_page(url):
 
 def inspect_pages(urls):
     with ThreadPoolExecutor(max_workers=4) as pool:
-        return list(pool.map(inspect_page, list(urls)[:8]))
+        futures = [pool.submit(copy_context().run, inspect_page, url) for url in list(urls)[:8]]
+        return [future.result() for future in futures]

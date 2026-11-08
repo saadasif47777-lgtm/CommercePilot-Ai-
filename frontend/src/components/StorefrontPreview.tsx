@@ -6,21 +6,22 @@
  * search/filter, product detail, quantity controls, add to cart and a cart
  * drawer with subtotal calculation.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type {
   BenefitsSection, FaqSection, FeaturedSection, FooterSection, HeaderSection, HeroSection,
   Product, ProductDetailSection, ReviewsSection, Section, WebsiteSpec,
 } from '../types'
+import { Modal } from './ui'
 import { money } from './ProductCards'
 
 type CartItem = { product: Product; qty: number }
 
 export const FONT_STACKS: Record<string, string> = {
-  serif: "'Fraunces', Georgia, serif",
-  display: "'Inter', 'Helvetica Neue', Arial, sans-serif",
-  sans: "'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif",
+  serif: "Georgia, 'Times New Roman', serif",
+  display: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+  sans: "'Segoe UI', Arial, sans-serif",
   system: "-apple-system, 'Segoe UI', Roboto, sans-serif",
 }
 const SECTION_GAP: Record<string, string> = { compact: '34px', comfortable: '64px', airy: '104px' }
@@ -54,7 +55,15 @@ function heroStyle(style: string, d: WebsiteSpec['design'], device: string): CSS
   return { ...base, gridTemplateColumns: device === 'mobile' ? '1fr' : '1.05fr 0.95fr' }
 }
 
-export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteSpec; device?: 'desktop' | 'mobile' }) {
+export function StorefrontPreview({ spec, device: requestedDevice = 'auto' }: { spec: WebsiteSpec; device?: 'auto' | 'desktop' | 'mobile' }) {
+  const container = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(true)
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < 640))
+    if (container.current) observer.observe(container.current)
+    return () => observer.disconnect()
+  }, [])
+  const device = requestedDevice === 'auto' ? (narrow ? 'mobile' : 'desktop') : requestedDevice
   const d = spec.design
   const sections = spec.sections
   const product = spec.product
@@ -134,7 +143,9 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
   const shell: CSSProperties = {
     background: d.background, color: d.text_color, fontFamily: FONT_STACKS[d.font_body] ?? FONT_STACKS.sans,
     ['--sp' as string]: SECTION_GAP[d.density],
-    maxWidth: device === 'mobile' ? '420px' : '100%',
+    width: requestedDevice === 'desktop' ? 960 : undefined,
+    minWidth: requestedDevice === 'desktop' ? 960 : undefined,
+    maxWidth: device === 'mobile' ? '420px' : requestedDevice === 'desktop' ? undefined : '100%',
     margin: device === 'mobile' ? '0 auto' : undefined,
     borderRadius: device === 'mobile' ? '18px' : undefined,
     overflow: 'hidden' as const,
@@ -144,12 +155,12 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
   const nav = (header?.nav as unknown as { label: string; href: string }[] | undefined) ?? []
 
   return (
-    <div style={shell}>
+    <div ref={container} style={{ ...shell, overflowWrap: 'anywhere' }}>
       {/* ------------------------------------------------------------ header */}
       {header && header.visible !== false && (
         <header style={{ position: 'sticky', top: 0, zIndex: 30, background: alpha(d.background, 0.94), borderBottom: '1px solid rgba(0,0,0,.07)', backdropFilter: 'blur(8px)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '0 20px', height: 60 }}>
-            <a href="#top" style={{ ...head(17), fontWeight: 700, color: d.primary_color, textDecoration: 'none' }}>{header.logo_text}</a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '12px 20px', minHeight: 60, flexWrap: 'wrap' }}>
+            <a href="#top" style={{ ...head(17), minWidth: 0, flex: '1 1 140px', fontWeight: 700, color: d.primary_color, textDecoration: 'none' }}>{header.logo_text}</a>
             <nav style={{ display: device === 'mobile' ? 'none' : 'flex', gap: 16, flex: 1 }}>
               {nav.map((n) => (
                 <a key={n.label} href={n.href} style={{ fontSize: 13.5, color: d.text_color, opacity: 0.75, textDecoration: 'none' }}>{n.label}</a>
@@ -157,7 +168,7 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
             </nav>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
               {device === 'mobile' && (
-                <button onClick={() => setMobileNav((v) => !v)} aria-label="Menu" style={{ background: 'none', border: 'none', fontSize: 20, color: d.text_color, cursor: 'pointer' }}>☰</button>
+                <button onClick={() => setMobileNav((v) => !v)} aria-label="Menu" aria-expanded={mobileNav} style={{ background: 'none', border: 'none', fontSize: 20, color: d.text_color, cursor: 'pointer' }}>☰</button>
               )}
               <button onClick={() => setCartOpen(true)} style={{ ...btn, padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>Cart ({count})</button>
             </div>
@@ -347,20 +358,8 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
       )}
 
       {/* ------------------------------------------------------- cart drawer */}
-      <AnimatePresence>
-        {cartOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCartOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(11,11,11,.42)', zIndex: 60, display: 'flex', justifyContent: 'flex-end' }}>
-            <motion.aside
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{ width: 'min(380px, 92vw)', height: '100%', background: d.background, color: d.text_color, padding: 22, display: 'flex', flexDirection: 'column', boxShadow: '-12px 0 40px rgba(0,0,0,.18)' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ ...head(18), margin: 0 }}>Your cart</h3>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'inherit' }} aria-label="Close cart">✕</button>
-              </div>
-
+      <Modal open={cartOpen} onClose={() => setCartOpen(false)} title="Your cart">
+        <div style={{ color: d.text_color, background: d.background }}>
               <div style={{ flex: 1, overflowY: 'auto', margin: '16px 0' }}>
                 {cart.length === 0 ? (
                   <div style={{ padding: '38px 8px', textAlign: 'center', opacity: 0.65, fontSize: 14 }}>
@@ -396,10 +395,8 @@ export function StorefrontPreview({ spec, device = 'desktop' }: { spec: WebsiteS
                   Checkout not configured
                 </button>
               </div>
-            </motion.aside>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </Modal>
     </div>
   )
 }

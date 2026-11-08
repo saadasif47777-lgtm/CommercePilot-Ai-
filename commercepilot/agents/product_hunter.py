@@ -633,6 +633,7 @@ def run(req: ResearchRequest) -> ResearchResult:
             warnings.append(f"AI evidence review unavailable: {exc} Search results and calculated scores are preserved.")
     known_ids = {p.id for p in scored}
     return ResearchResult(
+        ai_review_status="available" if review else "unavailable" if "product_hunting" in config.CLAUDE_MODULES and scored and contains_live else "not_requested",
         ai_summary=review.summary if review else "",
         ai_model=ai.route_for("product_research").model if review else "",
         ai_reviews={r.product_id: r.guidance for r in review.reviews if r.product_id in known_ids} if review else {},

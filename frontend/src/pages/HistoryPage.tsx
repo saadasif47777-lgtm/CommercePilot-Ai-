@@ -15,7 +15,7 @@ const STEP_LABELS: [string, string][] = [
 ]
 
 export function HistoryPage() {
-  const { projects, project, selectProject, removeProject, createProject, createBlankProject, busy, error, clearError, run } = useProject()
+  const { projects, project, selectProject, removeProject, createProject, busy, error, clearError, run } = useProject()
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const navigate = useNavigate()
 

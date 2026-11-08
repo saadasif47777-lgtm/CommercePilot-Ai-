@@ -17,11 +17,19 @@ from .storage import ProjectStore
 _lock = threading.Lock()
 _store: Optional[ProjectStore] = None
 _support_lock = threading.Lock()
+_workspaces = {}
 
 
 def get_store() -> ProjectStore:
     """Return the shared :class:`ProjectStore`, creating it on first use."""
     global _store
+    from .auth import workspace
+    identity = workspace.get()
+    if identity:
+        with _lock:
+            if identity not in _workspaces:
+                _workspaces[identity] = ProjectStore(config.DATABASE_URL or config.DB_PATH)
+            return _workspaces[identity]
     if _store is None:
         with _lock:
             if _store is None:

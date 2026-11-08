@@ -30,7 +30,12 @@ export function SettingsPage() {
         {Object.entries(integrations?.llm.modules ?? {}).length > 0 && <div className="mt-4 space-y-3 rounded-lg border border-line p-3">
           {Object.entries(integrations?.llm.modules ?? {}).map(([module, route]) => <div key={module} className="flex flex-wrap items-start justify-between gap-2 text-sm">
             <div className="min-w-0 flex-1 basis-[180px]"><p className="font-semibold">{({ marketing: 'Marketing Studio', store_architect: 'Store Architect', product_hunting: 'Product Hunter' } as Record<string, string>)[module] ?? module}</p><p className="mt-1 break-words text-xs text-muted">{route.provider} · {route.model}</p></div>
-            <ConnectionBadge status={route.status} />
+            <div><span className="text-xs text-muted">Connection probe: </span><ConnectionBadge status={route.status} /></div>
+            {route.requests && <div className="w-full text-xs text-muted">
+              <p>Last successful module request: {route.requests.last_success ? `${new Date(route.requests.last_success.created_at).toLocaleString()} · ${route.requests.last_success.model}` : 'Not yet verified'}</p>
+              {route.requests.last_failure && <p role="status">Last failure: {route.requests.last_failure.status.replace('failed_', '')} · {new Date(route.requests.last_failure.created_at).toLocaleString()}. Check configuration or retry the module.</p>}
+              {route.market_review && <p>Market Intelligence: {route.market_review.last_success ? `Last successful request ${new Date(route.market_review.last_success.created_at).toLocaleString()}` : 'No successful module request yet'}</p>}
+            </div>}
           </div>)}
         </div>}
         {(integrations?.llm.anthropic || Object.entries(integrations?.llm.modules ?? {}).length > 0) && <div className="mt-4">
@@ -73,6 +78,11 @@ export function SettingsPage() {
             })}>Load catalog</Button>
           </div>
         </form>
+        {catalog?.page_info?.hasNextPage && <Button className="mt-3" variant="secondary" disabled={!!busy} onClick={() => perform('catalog-more', async () => {
+          const result = await api.shopifySync(50, catalog.page_info?.endCursor ?? undefined)
+          if (!result.ok) throw new Error(result.detail || 'Catalog unavailable')
+          setCatalog({ ...result, products: [...(catalog.products ?? []), ...(result.products ?? [])].filter((p, i, all) => all.findIndex(row => row.id === p.id) === i) })
+        })}>Load more products</Button>}
         <Link to="/support" className="mt-4 inline-block text-sm text-brand underline">Set up Shopify customer support →</Link>
         {catalog && <div className="mt-5 space-y-3">
           <p className="text-xs text-muted">{catalog.count} products · {catalog.currency || 'currency unavailable'}. First 50 products; set supplier costs after importing.</p>
@@ -80,7 +90,7 @@ export function SettingsPage() {
           {catalog.products?.map(p => <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-line p-3">
             <div><p className="text-sm font-semibold">{p.title}</p><p className="text-xs text-muted">{catalog.currency} {p.price ?? 'Price unavailable'}</p></div>
             <Button size="sm" disabled={!project || !!busy || p.price == null} onClick={() => perform('import-product', async () => {
-              await api.importShopify(project!.id, p.id); await refreshProject(); setMessage(p.title + ' imported and selected. Enter its supplier cost in Products before checking profitability.')
+              await api.importShopify(project!.id, p.id, p.page_after); await refreshProject(); setMessage(p.title + ' imported and selected. Enter its supplier cost in Products before checking profitability.')
             })}>Import & select</Button>
           </div>)}
         </div>}
@@ -120,6 +130,11 @@ export function SettingsPage() {
             <p className="mt-2">Spend: {row.account_currency} {row.spend} · Clicks: {row.clicks} · Impressions: {row.impressions}</p>
           </div>)}
         </div>}
+        {insights?.next_cursor && <Button variant="secondary" disabled={!!busy} onClick={() => perform('insights-more', async () => {
+          const result = await api.metaInsights(insights.next_cursor ?? undefined)
+          if (!result.ok) throw new Error(result.detail)
+          setInsights({ ...result, rows: [...(insights.rows ?? []), ...(result.rows ?? [])] })
+        })}>Load more reporting rows</Button>}
         <p className="mt-4 text-xs text-muted">Reporting is read-only. Campaign creation in Marketing Studio produces a plan for review; this connection does not publish or spend money.</p>
       </Card>
     </div>

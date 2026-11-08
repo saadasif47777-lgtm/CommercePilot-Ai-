@@ -91,7 +91,7 @@ ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 ANTHROPIC_TIMEOUT = float(env("ANTHROPIC_TIMEOUT", "35"))
 ANTHROPIC_MAX_OUTPUT_TOKENS = int(env("ANTHROPIC_MAX_OUTPUT_TOKENS", "2400"))
 CLAUDE_MODULES = {value.strip() for value in env("CLAUDE_MODULES", "").split(",") if value.strip()}
-# Hard monthly spend cap in USD (estimated from token counts). 0 disables it.
+# Estimated monthly spend allowance in USD (estimated from token counts). 0 disables it.
 AI_MONTHLY_CAP_USD = float(env("AI_MONTHLY_CAP_USD", "25"))
 # Warn (log line + usage summary flag) once this share of the cap is used.
 AI_BUDGET_WARN_PCT = float(env("AI_BUDGET_WARN_PCT", "80"))
@@ -162,3 +162,12 @@ def validate_runtime() -> None:
         raise RuntimeError("Production requires a persistent disk; ephemeral serverless SQLite is unsupported")
     if "*" in CORS_ORIGINS:
         raise RuntimeError("Production CORS_ORIGINS must contain explicit origins")
+
+# Client workspaces require authenticated Google identities in production.
+AUTH_ENABLED = env_bool("AUTH_ENABLED", production())
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET")
+SESSION_SECRET = env("SESSION_SECRET")
+
+# Enable after confirming schema support for the configured Claude model.
+ANTHROPIC_STRUCTURED_OUTPUT = env_bool("ANTHROPIC_STRUCTURED_OUTPUT", False)

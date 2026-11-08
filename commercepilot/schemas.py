@@ -108,6 +108,7 @@ class ResearchRequest(BaseModel):
 
 
 class ResearchResult(BaseModel):
+    ai_review_status: Literal["not_requested", "available", "unavailable"] = "not_requested"
     ai_summary: str = ""
     ai_model: str = ""
     ai_reviews: dict[str, str] = Field(default_factory=dict)

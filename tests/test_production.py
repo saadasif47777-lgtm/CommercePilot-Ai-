@@ -160,7 +160,7 @@ def test_shopify_graphql(monkeypatch):
     monkeypatch.setattr(config, "SHOPIFY_ADMIN_TOKEN", "secret")
     def post(self, url, **kwargs):
         assert url.endswith("/graphql.json")
-        assert kwargs["json"]["variables"] == {"first": 10}
+        assert kwargs["json"]["variables"] == {"first": 10, "after": None}
         return httpx.Response(200, json={"data": {"products": {"nodes": [{"title": "Item", "handle": "item", "variants": {"nodes": [{"price": "10.50"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": "end"}}}})
     monkeypatch.setattr(httpx.Client, "post", post)
     # Mock transport construction as well, so machine proxy configuration is irrelevant.

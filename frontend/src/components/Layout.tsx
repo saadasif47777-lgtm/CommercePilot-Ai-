@@ -2,12 +2,11 @@
 // The sidebar collapses into an off-canvas drawer below the `lg` breakpoint so
 // the same markup works on phones, tablets and desktops.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useProject } from '../state/ProjectContext'
-import { errorText } from '../services/api'
-import { Badge, Button, ErrorBanner } from './ui'
+import { Badge, Button } from './ui'
 
 // Single source of truth for navigation: route, label and the SVG path drawn
 // as the item's icon. Add a page by adding one row here.
@@ -45,7 +44,22 @@ function Logo() {
 // sidebar is always visible and the drawer state is ignored.
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { project } = useProject()
-  const loc = useLocation()
+  const drawer = useRef<HTMLElement>(null)
+  const [mobile, setMobile] = useState(() => window.innerWidth < 1024)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)')
+    const update = () => setMobile(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  useEffect(() => {
+    if (!mobile || !open) return
+    const previous = document.activeElement as HTMLElement | null
+    const content = document.querySelector<HTMLElement>('[data-workspace-content]')
+    if (content) content.inert = true
+    drawer.current?.querySelector<HTMLElement>('a')?.focus()
+    return () => { if (content) content.inert = false; previous?.focus() }
+  }, [open, mobile])
 
   return (
     <>
@@ -62,7 +76,17 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         )}
       </AnimatePresence>
 
-      <aside
+      <aside ref={drawer} inert={mobile && !open} role={mobile && open ? 'dialog' : undefined}
+        aria-modal={mobile && open ? true : undefined} aria-label="Workspace navigation"
+        onKeyDown={e => {
+          if (!mobile || !open) return
+          if (e.key === 'Escape') { e.preventDefault(); onClose() }
+          if (e.key !== 'Tab') return
+          const links = [...e.currentTarget.querySelectorAll<HTMLElement>('a, button')]
+          const first = links[0], last = links[links.length - 1]
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+          if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+        }}
         className={`fixed inset-y-0 left-0 z-40 w-[248px] border-r border-line bg-paper transition-transform lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -119,28 +143,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
 // Sticky header: page title, project switcher and the Add New Project action.
 export function TopBar({ onMenu }: { onMenu: () => void }) {
-  const { projects, project, selectProject, createBlankProject } = useProject()
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
-  const navigate = useNavigate()
   const loc = useLocation()
-
-  // Add New Project: creates a real, empty project (never the Noor Glow demo),
-  // makes it the active project, then opens the existing Settings page where the
-  // business brief and Meta/Shopify sections already live. Failures surface the
-  // real API error and deliberately do not navigate away.
-  const startNewProject = async () => {
-    if (creating) return
-    setCreating(true)
-    setCreateError(null)
-    try {
-      navigate('/business?new=1')
-    } catch (err) {
-      setCreateError(errorText(err))
-    } finally {
-      setCreating(false)
-    }
-  }
+  const { projects, project, selectProject } = useProject()
+  const navigate = useNavigate()
 
   // Title comes from the same NAV list, so header and sidebar never disagree.
   const title = NAV.find((n) => (n.end ? loc.pathname === n.to : loc.pathname.startsWith(n.to)))?.label ?? 'Overview'
@@ -181,12 +186,11 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <Button
             size="sm"
             variant="accent"
-            busy={creating}
-            onClick={startNewProject}
+            onClick={() => navigate('/business?new=1')}
             title="Create a new blank project and open its business brief"
             className="shrink-0 whitespace-nowrap"
           >
-            {!creating && (
+            {(
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
@@ -195,13 +199,6 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </Button>
         </div>
       </div>
-      {/* Creation errors belong next to the action that caused them, and are
-          shown on every page because this header is part of the app shell. */}
-      {createError && (
-        <div className="px-4 lg:px-7">
-          <ErrorBanner message={createError} onDismiss={() => setCreateError(null)} />
-        </div>
-      )}
     </header>
   )
 }

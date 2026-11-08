@@ -22,7 +22,6 @@ interface ProjectContextValue {
   selectProject: (id: string) => Promise<void>
   refreshProject: () => Promise<void>
   createProject: (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) => Promise<Project>
-  createBlankProject: (name?: string) => Promise<Project>
   removeProject: (id: string) => Promise<void>
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>
   clearError: () => void
@@ -34,7 +33,6 @@ const STORAGE_KEY = 'commercepilot.currentProject'
 // Placeholder name for a brand-new project. The backend requires a non-empty
 // business_name, so this becomes the project name until the user saves their
 // own business brief in Settings. No example data is seeded.
-export const BLANK_PROJECT_NAME = 'New Project'
 
 // An empty brief: only the placeholder name is filled in, every business
 // detail is left for the user. Matches the backend's BusinessBrief defaults.
@@ -63,6 +61,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null)
   const activeRun = useRef(false)
+  const selection = useRef(0)
+  const selectionRequest = useRef<AbortController | null>(null)
+  const selectedId = useRef<string | null>(null)
+  const refreshGeneration = useRef(0)
   const refreshIntegrations = useCallback(async () => { setIntegrations(await api.integrations()) }, [])
 
   // Reload the sidebar list of projects (cheap; called after create/delete).
@@ -75,9 +77,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   // Open a project and remember it. On failure the selection is cleared rather
   // than leaving a half-loaded workspace on screen.
   const selectProject = useCallback(async (id: string) => {
+    const generation = ++selection.current
+    selectionRequest.current?.abort()
+    const controller = new AbortController()
+    selectionRequest.current = controller
+    selectedId.current = id
     setLoading(true)
     try {
-      const p = await api.getProject(id)
+      const p = await api.getProject(id, controller.signal)
+      if (generation !== selection.current) return
       if (p.is_example || p.selected_product?.is_sample_data) {
         setProject(null)
         localStorage.removeItem(STORAGE_KEY)
@@ -88,20 +96,23 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setError(null)
       localStorage.setItem(STORAGE_KEY, id)
     } catch (err) {
+      if (generation !== selection.current) return
       setError(errorText(err))
-      setProject(null)
-      localStorage.removeItem(STORAGE_KEY)
     } finally {
-      setLoading(false)
+      if (generation === selection.current) setLoading(false)
     }
   }, [])
 
   // Re-read the open project after an action the backend performed on it.
   const refreshProject = useCallback(async () => {
-    if (!project) return
+    if (!project || project.id !== selectedId.current) return
+    const generation = selection.current
+    const refresh = ++refreshGeneration.current
     try {
-      setProject(await api.getProject(project.id))
+      const updated = await api.getProject(project.id)
+      if (generation === selection.current && refresh === refreshGeneration.current) setProject(updated)
     } catch (err) {
+      if (generation !== selection.current) return
       setError(errorText(err))
       throw err
     }
@@ -109,7 +120,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const createProject = useCallback(
     async (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) => {
+      const generation = ++selection.current
       const p = await api.createProject(payload)
+      if (generation !== selection.current) { await refreshProjects(); return p }
+      selectedId.current = p.id
       setProject(p)
       localStorage.setItem(STORAGE_KEY, p.id)
       await refreshProjects()
@@ -118,17 +132,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     [refreshProjects],
   )
 
-  // Real (non-example) project: created empty and immediately made active, so
-  // the caller can send the user straight to the business brief in Settings.
-  const createBlankProject = useCallback(
-    async (name: string = BLANK_PROJECT_NAME) => createProject({ name, brief: blankBrief(name) }),
-    [createProject],
-  )
-
   const removeProject = useCallback(
     async (id: string) => {
       await api.deleteProject(id)
-      if (project?.id === id) {
+      if (selectedId.current === id) {
+        selection.current++
+        selectedId.current = null
         setProject(null)
         localStorage.removeItem(STORAGE_KEY)
       }
@@ -179,10 +188,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ProjectContextValue>(
     () => ({
       projects, project, loading, busy, error, integrations,
-      refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, createBlankProject, removeProject, run,
+      refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, removeProject, run,
       clearError: () => setError(null),
     }),
-    [projects, project, loading, busy, error, integrations, refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, createBlankProject, removeProject, run],
+    [projects, project, loading, busy, error, integrations, refreshProjects, refreshIntegrations, selectProject, refreshProject, createProject, removeProject, run],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

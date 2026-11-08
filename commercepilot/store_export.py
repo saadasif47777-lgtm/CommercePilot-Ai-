@@ -1,7 +1,7 @@
 """Render a validated storefront specification to standalone HTML.
 
-The in-app preview and the downloadable file both come from this single
-renderer, so what you see in the app is exactly what you export. The output is
+The interactive React preview and this static export consume the same validated
+section specification. Export preserves content, with checkout left unconfigured. The output is
 plain HTML and CSS with no framework and no JavaScript: it opens anywhere and
 never executes generated code.
 """
@@ -11,9 +11,9 @@ import html
 from typing import Any
 
 FONT_STACKS = {
-    "serif": "'Playfair Display', Georgia, 'Times New Roman', serif",
-    "display": "'Poppins', 'Helvetica Neue', Arial, sans-serif",
-    "sans": "'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "serif": "Georgia, 'Times New Roman', serif",
+    "display": "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+    "sans": "'Segoe UI', Arial, sans-serif",
     "system": "-apple-system, 'Segoe UI', Roboto, sans-serif",
 }
 GAP = {"compact": "28px", "comfortable": "56px", "airy": "96px"}
@@ -33,7 +33,7 @@ def render_standalone_html(spec: dict) -> str:
     product = spec.get("product") or {}
     currency = spec.get("currency", "PKR")
     price = product.get("observed_price")
-    price_label = f"{currency} {price:,.0f}" if price else "Price on request"
+    price_label = f"{currency} {price:,.0f}" if price is not None else "Price on request"
     heading_font = FONT_STACKS.get(d.get("font_heading", "sans"), FONT_STACKS["sans"])
     body_font = FONT_STACKS.get(d.get("font_body", "sans"), FONT_STACKS["sans"])
     radius = d.get("radius", 12)
@@ -46,6 +46,7 @@ def render_standalone_html(spec: dict) -> str:
     header = by_type.get("header") or {}
     hero = by_type.get("hero") or {}
     detail = by_type.get("product_detail") or {}
+    featured = by_type.get("featured") or {}
     benefits = by_type.get("benefits") or {}
     reviews = by_type.get("reviews") or {}
     faq = by_type.get("faq") or {}
@@ -102,8 +103,23 @@ def render_standalone_html(spec: dict) -> str:
   <div class="wrap"><a class="logo" href="#top">{_esc(header.get('logo_text'))}</a>
   <nav>{nav_html}</nav><a class="btn small" href="#product">{_esc(header.get('cta_label'))}</a></div>
 </header>"""]
+    if not visible(header):
+        blocks = []
     if visible(hero):
         blocks.append(f'<section id="top" class="{hero_class} wrap">{hero_inner}</section>')
+    if visible(featured):
+        cards = []
+        catalog = spec.get("sample_catalog") or []
+        rows = [product, *catalog] if featured.get("show_catalog") else [product]
+        seen = set()
+        for row in rows:
+            if not row or row.get("id") in seen:
+                continue
+            seen.add(row.get("id"))
+            amount = row.get("observed_price")
+            label = f"{row.get('currency') or currency} {amount:,.0f}" if amount is not None else "Price on request"
+            cards.append(f'<article class="product-tile"><h3>{_esc(row.get("title"))}</h3><p>{_esc(row.get("description"))}</p><strong>{_esc(label)}</strong></article>')
+        blocks.append(f'<section id="catalog" class="wrap section"><h2>{_esc(featured.get("title"))}</h2><div class="grid">{"".join(cards)}</div></section>')
     if visible(detail):
         blocks.append(f"""<section id="product" class="wrap section">
   <h2>{_esc(detail.get('title'))}</h2>

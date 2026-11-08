@@ -123,11 +123,13 @@ class SupportStore:
                 raise HTTPException(401, "Please start a new chat; this session has expired or the store was updated.")
             if row["busy_until"] > now().isoformat():
                 raise HTTPException(409, "Your previous message is still being answered.")
-            self.db.execute("UPDATE support_sessions SET busy_until=? WHERE id_hash=?", ((now() + timedelta(minutes=2)).isoformat(), key))
-        return json.loads(row["data"])
+            lease = (now() + timedelta(minutes=2)).isoformat()
+            self.db.execute("UPDATE support_sessions SET busy_until=? WHERE id_hash=?", (lease, key))
+        return json.loads(row["data"]), lease
 
-    def finish_session(self, token, history=None):
+    def finish_session(self, token, reservation, history=None):
+        # A timed-out request must never release a newer request's lease.
         if history is None:
-            self.db.execute("UPDATE support_sessions SET busy_until='' WHERE id_hash=?", (digest(token),))
+            self.db.execute("UPDATE support_sessions SET busy_until='' WHERE id_hash=? AND busy_until=?", (digest(token), reservation))
         else:
-            self.db.execute("UPDATE support_sessions SET busy_until='',data=? WHERE id_hash=?", (json.dumps(history[-8:]), digest(token)))
+            self.db.execute("UPDATE support_sessions SET busy_until='',data=? WHERE id_hash=? AND busy_until=?", (json.dumps(history[-8:]), digest(token), reservation))

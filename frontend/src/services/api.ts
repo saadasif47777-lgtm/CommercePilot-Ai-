@@ -9,7 +9,7 @@
 // project is the Vite dev proxy target, which is server-side dev config.
 
 import type {
-  AnalysisResult, AssistantReply, ScenarioInput, BusinessBrief, CampaignPlan, IntegrationStatus,
+  AnalysisResult, ScenarioInput, BusinessBrief, CampaignPlan, IntegrationStatus,
   Product, Project, ProjectSummary, ResearchRequest, ResearchResult, StoreDesign,
   StoreEditResponse, WebsiteSpec, WorkflowResult,
 } from '../types'
@@ -33,9 +33,12 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
+      signal: init?.signal ?? AbortSignal.timeout(55000),
       headers: { 'content-type': 'application/json', ...init?.headers },
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof DOMException && error.name === 'TimeoutError') throw new ApiError(408, 'This request took too long. Refresh your saved results before retrying.')
     throw new ApiError(0, API_BASE
       ? `Backend unreachable at ${API_BASE}. Is the API service running?`
       : 'Backend unreachable. Is the API server running on port 8000?')
@@ -55,6 +58,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const body = await res.json()
       detail = body.detail ?? body
     } catch { /* keep default */ }
+    const requestId = res.headers.get('x-request-id')
+    if (requestId && typeof detail === 'string') detail += ` (Reference: ${requestId})`
     throw new ApiError(res.status, detail)
   }
   if (res.status === 204) return undefined as T
@@ -68,18 +73,12 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<{ status: string; llm_mode: string; mode: string }>('/api/health'),
 
-  products: (category?: string) =>
-    request<{ is_sample_data: boolean; disclaimer: string; count: number; products: Product[] }>(
-      `/api/products${category ? `?category=${encodeURIComponent(category)}` : ''}`,
-    ),
-
-  research: (req: ResearchRequest) => post<ResearchResult>('/api/research', req),
   projectResearch: (id: string, req: ResearchRequest) => post<ResearchResult>(`/api/projects/${id}/research`, req),
 
   listProjects: () => request<{ count: number; projects: ProjectSummary[] }>('/api/projects'),
   createProject: (payload: { name?: string; example?: boolean; brief?: BusinessBrief }) =>
     post<Project>('/api/projects', payload),
-  getProject: (id: string) => request<Project>(`/api/projects/${id}`),
+  getProject: (id: string, signal?: AbortSignal) => request<Project>(`/api/projects/${id}`, { signal }),
   deleteProject: (id: string) => request<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
   updateBrief: (id: string, brief: BusinessBrief) => post<Project>(`/api/projects/${id}/brief`, { brief }),
   validateBrief: (id: string) => post<Project>(`/api/projects/${id}/validate-brief`),
@@ -135,20 +134,19 @@ export const api = {
   runWorkflow: (id: string, payload?: { auto_select?: boolean; mode?: 'sample' | 'live' | 'both'; force?: boolean }) =>
     post<WorkflowResult>(`/api/projects/${id}/run-workflow`, payload ?? {}),
   report: (id: string, refresh = false) =>
-    request<Project['report']>(`/api/projects/${id}/report${refresh ? '?refresh=true' : ''}`),
+    refresh ? post<Project['report']>(`/api/projects/${id}/report`) : request<Project['report']>(`/api/projects/${id}/report`),
 
-  assistant: (id: string, message: string) => post<AssistantReply>(`/api/projects/${id}/assistant`, { message }),
 
   integrations: () => request<IntegrationStatus>('/api/integrations/status'),
   saveMetaCredentials: (payload: { access_token: string; ad_account_id: string; app_id?: string; app_secret?: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string; status: string }>('/api/integrations/meta/credentials', payload),
   verifyMeta: () => post<{ verified: boolean; detail: string }>('/api/integrations/meta/verify'),
   verifyModel: (provider: 'default' | 'anthropic' = 'default') => post<{ verified: boolean; model: string }>(`/api/integrations/llm/verify?provider=${provider}`),
-  metaInsights: () => request<{ ok: boolean; detail: string; source?: string; rows?: { account_name: string; account_currency: string; spend: string; clicks: string; impressions: string; date_start: string; date_stop: string }[] }>('/api/integrations/meta/insights'),
+  metaInsights: (after?: string) => request<{ next_cursor?: string | null; ok: boolean; detail: string; source?: string; rows?: { account_name: string; account_currency: string; spend: string; clicks: string; impressions: string; date_start: string; date_stop: string }[] }>(`/api/integrations/meta/insights${after ? '?after=' + encodeURIComponent(after) : ''}`),
   saveShopifyCredentials: (payload: { shop_domain: string; admin_token: string }) =>
     post<{ saved: boolean; verified: boolean; detail: string }>('/api/integrations/shopify/credentials', payload),
-  shopifySync: (limit = 10) => post<{ ok: boolean; detail?: string; count?: number; currency?: string; products?: { id: string; title: string; price: string | null; image?: string; description?: string }[] }>(`/api/integrations/shopify/sync?limit=${limit}`),
-  importShopify: (id: string, productId: string) => post<Project>(`/api/projects/${id}/shopify/import`, { product_id: productId }),
+  shopifySync: (limit = 10, after?: string) => post<{ page_info?: { hasNextPage: boolean; endCursor: string | null }; ok: boolean; detail?: string; count?: number; currency?: string; products?: { page_after?: string; id: string; title: string; price: string | null; image?: string; description?: string }[] }>(`/api/integrations/shopify/sync?limit=${limit}${after ? "&after=" + encodeURIComponent(after) : ""}`),
+  importShopify: (id: string, productId: string, after?: string) => post<Project>(`/api/projects/${id}/shopify/import`, { product_id: productId, after }),
 
   downloadStore: async (id: string, filename: string) => {
     const response = await fetch(`${API_BASE}/api/projects/${id}/store/export`)
@@ -159,7 +157,6 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   },
 
-  storeExportUrl: (id: string) => `${API_BASE}/api/projects/${id}/store/export`,
 }
 
 export function errorText(err: unknown): string {

@@ -138,7 +138,7 @@ test('mobile workspace stays within viewport and campaign delivery choices persi
   await page.setViewportSize({ width: 390, height: 844 })
   for (const route of ['/', '/business', '/products', '/marketing', '/analytics', '/settings', '/support', '/assistant']) {
     await page.goto(route)
-    await expect(page.locator('main h1')).toBeVisible()
+    await expect(page.locator('main').getByRole('heading').first()).toBeVisible()
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
   }
   await page.goto('/marketing')
@@ -323,4 +323,93 @@ test('syncs Shopify support, previews grounded answers and embeds a cross-origin
   await page.getByLabel('Your message', { exact: true }).press('Escape')
   await expect(page.getByRole('button', { name: 'Chat with us', exact: true })).toBeFocused()
   expect(errors).toEqual([])
+})
+
+test('late project responses cannot replace the latest selection', async ({ page, request }) => {
+  const create = async (name: string) => (await request.post('/api/projects', { data: { brief: { business_name: name, niche: 'lighting', budget: 1000 } } })).json()
+  const a = await create('Race workspace A')
+  const b = await create('Race workspace B')
+  let release!: () => void
+  const held = new Promise<void>(resolve => { release = resolve })
+  await page.route(`**/api/projects/${a.id}`, async route => { await held; await route.fulfill({ json: a }) })
+  await page.goto('/')
+  await page.getByLabel('Active project', { exact: true }).selectOption(a.id)
+  await page.getByLabel('Active project', { exact: true }).selectOption(b.id)
+  await expect(page.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  release()
+  await page.waitForTimeout(200)
+  await expect(page.getByRole('heading', { name: b.name, exact: true })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('commercepilot.currentProject'))).toBe(b.id)
+})
+
+test('all routes fit small screens with the locally served humanist font', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const path of ['/', '/business', '/products', '/store', '/marketing', '/analytics', '/assistant', '/support', '/history', '/settings']) {
+      await page.goto(path)
+      await expect(page.locator('main').getByRole('heading').first()).toBeVisible()
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+      expect(await page.locator('body').evaluate(el => getComputedStyle(el).fontFamily)).toContain('Source Sans 3')
+    }
+  }
+  expect(errors).toEqual([])
+  await page.goto('/business')
+  await expect(page.locator('main > div')).toHaveCSS('opacity', '1')
+  await page.evaluate(() => document.fonts.ready)
+  await page.screenshot({ path: '/tmp/commercepilot-typography-desktop.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.locator('aside').evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0.5)
+  await page.screenshot({ path: '/tmp/commercepilot-typography-mobile.png', fullPage: true })
+})
+
+test('delete confirmation traps focus, closes with Escape and restores focus', async ({ page, request }) => {
+  await request.post('/api/projects', { data: { brief: { business_name: 'Keyboard dialog QA', niche: 'lamps', budget: 1000 } } })
+  await page.goto('/history')
+  const button = page.getByRole('button', { name: 'Delete', exact: true }).first()
+  await button.click()
+  const dialog = page.getByRole('dialog', { name: 'Delete project?' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused()
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press('Tab')
+    expect(await dialog.evaluate(node => node.contains(document.activeElement))).toBe(true)
+  }
+  await page.keyboard.press('Escape')
+  await expect(dialog).not.toBeVisible()
+  await expect(button).toBeFocused()
+})
+
+test('mobile navigation and storefront cart work from the keyboard', async ({ page, request }) => {
+  const project = await (await request.post('/api/projects', { data: { brief: { business_name: 'A very long handmade lighting studio brand name for small screens', niche: 'lamps', budget: 1000 } } })).json()
+  await request.post(`/api/projects/${project.id}/products/manual`, { data: { title: 'Handmade reading lamp with a long product name', observed_price: 2000, observed_cost: 500 } })
+  await request.post(`/api/projects/${project.id}/generate-store`)
+  await page.goto('/')
+  await page.getByLabel('Active project', { exact: true }).selectOption(project.id)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const trigger = page.getByRole('button', { name: 'Open menu' })
+  await trigger.click()
+  const navigation = page.getByRole('dialog', { name: 'Workspace navigation' })
+  await expect(navigation).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+  await page.goto('/store')
+  await expect(page.getByRole('button', { name: 'Cart (0)', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cart (0)', exact: true }).click()
+  const cart = page.getByRole('dialog', { name: 'Your cart' })
+  await expect(cart).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(cart).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cart (0)', exact: true })).toBeFocused()
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+    const preview = page.getByLabel('Storefront preview; scroll horizontally in Desktop mode')
+    expect(await preview.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+  }
+  await page.getByRole('button', { name: 'Desktop', exact: true }).click()
+  const frame = page.getByLabel('Storefront preview; scroll horizontally in Desktop mode')
+  expect(await frame.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })

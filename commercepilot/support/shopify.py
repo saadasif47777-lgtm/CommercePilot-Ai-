@@ -12,6 +12,8 @@ import httpx
 from fastapi import HTTPException
 
 from .. import config, integrations
+from ..auth import workspace
+from ..operations import sync_operation
 from .models import origin
 from .store import digest, now
 
@@ -61,9 +63,9 @@ def plain_html(text):
 
 def connection():
     saved = integrations._saved("shopify")
-    domain = (config.SHOPIFY_SHOP_DOMAIN or saved.get("shop_domain", "")).strip().lower()
+    domain = ((config.SHOPIFY_SHOP_DOMAIN if not workspace.get() else "") or saved.get("shop_domain", "")).strip().lower()
     domain = domain.removeprefix("https://").rstrip("/")
-    token = config.SHOPIFY_ADMIN_TOKEN or saved.get("admin_token", "")
+    token = (config.SHOPIFY_ADMIN_TOKEN if not workspace.get() else "") or saved.get("admin_token", "")
     if not token or not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.myshopify\.com", domain):
         raise HTTPException(422, "Connect Shopify in Settings & Integrations first, using your myshopify.com domain.")
     return domain, token, digest(json.dumps([domain, token]))
@@ -96,8 +98,13 @@ def safe_url(value, allowed_origins):
         return ""
 
 
-def start(store):
+@sync_operation
+def start(store, restart=False):
     domain, token, fingerprint = connection()
+    pending = store.state().get("pending")
+    if pending and pending["fingerprint"] == fingerprint and not restart:
+        counts = store.counts(pending["id"])
+        return {"sync_id": pending["id"], "complete": False, "pages": pending["pages"], "scanned": pending["scanned"], "products": counts.get("product", 0), "policies": counts.get("policy", 0)}
     data = graphql(domain, token, SHOP_QUERY)
     try:
         shop = data["shop"]
@@ -146,6 +153,7 @@ def product_document(product, shop):
             "price": str(price), "max_price": str(max_price), "currency": minimum["currencyCode"], "image": image}
 
 
+@sync_operation
 def next_page(store, sync_id):
     state = store.state()
     pending = state.get("pending")

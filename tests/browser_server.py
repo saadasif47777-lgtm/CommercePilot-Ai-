@@ -11,7 +11,7 @@ import uvicorn
 
 def main():
     with TemporaryDirectory(prefix="browser-test-", dir=Path(__file__).resolve().parents[1]) as directory:
-        os.environ.update(APP_MODE="production", DB_PATH=f"{directory}/test.sqlite3", SECRETS_DIR=f"{directory}/secrets",
+        os.environ.update(APP_MODE="production", AUTH_ENABLED="false", DB_PATH=f"{directory}/test.sqlite3", SECRETS_DIR=f"{directory}/secrets",
                           DATABASE_URL="",
                           LLM_API_KEY="browser-test-key-not-real", LLM_MODEL="test-model",
                           PUBLIC_URL="http://127.0.0.1:8011", CORS_ORIGINS="http://127.0.0.1:8011")
@@ -83,7 +83,7 @@ def main():
                 if "SupportCatalog" in query["query"]:
                     page = catalog([product(2)]) if query.get("variables", {}).get("after") else catalog([product()], "page-2")
                     return httpx.Response(200, json={"data": page})
-                return httpx.Response(200, json={"data": {"shop": {"currencyCode": "PKR"}, "products": {"nodes": [{"id": "gid://shopify/Product/1", "title": "Imported lamp", "handle": "lamp", "description": "Desk lamp", "variants": {"nodes": [{"price": "2000"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": None}}}})
+                return httpx.Response(200, json={"data": {"shop": {"currencyCode": "PKR", "myshopifyDomain": request.url.host}, "currentAppInstallation": {"accessScopes": [{"handle": "read_products"}]}, "products": {"nodes": [{"id": "gid://shopify/Product/1", "title": "Imported lamp", "handle": "lamp", "description": "Desk lamp", "variants": {"nodes": [{"price": "2000"}]}}], "pageInfo": {"hasNextPage": False, "endCursor": None}}}})
             if request.url.path.endswith("/insights"):
                 return httpx.Response(200, json={"data": [{"account_name": "Test account", "account_currency": "PKR", "spend": "1000", "clicks": "100", "impressions": "5000", "date_start": "2026-10-01", "date_stop": "2026-10-23"}]})
             return httpx.Response(200, json={"id": "act_123456", "name": "Test account", "currency": "PKR", "account_status": 1})

@@ -168,7 +168,7 @@ def build_spec(
         ),
     ]
 
-    if config.production():
+    if config.production() or not product.is_sample_data:
         sections = [s for s in sections if s.type not in {"reviews", "benefits", "faq"}]
         sections[0].nav = [n for n in nav if n.href not in {"#reviews", "#benefits", "#faq"}]
         sections[-1].note = "Storefront draft. Review product claims and configure checkout before publication."
@@ -246,6 +246,9 @@ def _template_copy(brief: BusinessBrief, product: Product, brand: str, personali
         "7-day return window on unopened items",
         "Cash on delivery available",
     ]
+    if not product.is_sample_data:
+        tone = f"Explore {brand}"
+        bullets = [product.description] if product.description else []
     return {
         "headline": product.title,
         "subheadline": tone + f". {product.description[:110]}".rstrip(".") + ".",

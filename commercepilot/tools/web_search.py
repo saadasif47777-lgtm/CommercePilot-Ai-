@@ -47,7 +47,8 @@ def search(query: str, limit: int = 8, timeout: float | None = None) -> SearchOu
     query = _clean(query)[:300]
     if not query:
         return SearchOutcome(warning="Empty search query.")
-    timeout = timeout or config.WEB_SEARCH_TIMEOUT
+    from ..deadline import remaining
+    timeout = remaining(timeout or config.WEB_SEARCH_TIMEOUT)
     started = time.time()
     outcome = (
         _serper(query, limit, timeout) if config.SERPER_API_KEY else _ddgs(query, limit, timeout)

@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 from .. import ai, config
 from ..agents import business_analyst, marketing_agent, product_hunter, store_architect
+from ..operations import project_operation
 from ..schemas import (
     WORKFLOW_STEPS,
     AgentExecution,
@@ -204,14 +205,17 @@ def step_validate_brief(store: ProjectStore, project: dict) -> None:
     _save(store, project)
 
 
+@project_operation
 def step_research(store: ProjectStore, project: dict, request: ResearchRequest) -> ResearchResult:
     request = request.model_copy(update={"currency": (project.get("brief") or {}).get("currency") or request.currency})
     execution = _start(store, project, "Product Hunter", f"mode={request.mode}, niche={request.niche!r}")
+    prior_research = project.get("research")
     _set_step(store, project, "research", "running", "Searching candidates...")
     try:
         result = product_hunter.run(request)
     except Exception as exc:  # defensive: agent should not raise, but never lose the step
-        _set_step(store, project, "research", "error", str(exc))
+        project["research_attempt"] = {"status": "failed", "message": "Research failed. Previous saved results were kept; retry this search.", "result": None}
+        _set_step(store, project, "research", "success" if prior_research else "error", "Last attempt failed; saved results retained")
         _finish(store, project, execution.id, "error", errors=[str(exc)])
         _save(store, project)
         raise StepFailed("research", f"Product Hunter failed: {exc}") from exc
@@ -227,11 +231,10 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
                 *(result.warnings or []),
                 f"{original_count - len(result.products)} rejected product(s) hidden from this run.",
             ]
-    project["selected_product"] = None
-    invalidate_outputs(project)
-    project["research"] = result.model_dump()
+    project["research_attempt"] = {"status": "success", "message": "Research completed", "result": result.model_dump()}
     if not result.products:
-        _set_step(store, project, "research", "error", "No candidates found")
+        project["research_attempt"].update(status="failed", message="No eligible products found. Previous saved results were kept; try a different search.")
+        _set_step(store, project, "research", "success" if prior_research else "error", "No candidates found; saved results retained")
         _finish(store, project, execution.id, "error", errors=result.warnings or ["No products found."])
         _save(store, project)
         raise StepFailed("research", "No product candidates found. Try a different niche or mode.")
@@ -249,6 +252,13 @@ def step_research(store: ProjectStore, project: dict, request: ResearchRequest) 
                 "catalogue plus keyless DuckDuckGo when available. Real market data needs "
                 "SERPER_API_KEY.",
             ]
+    if result.ai_review_status == "unavailable" and prior_research:
+        project["research_attempt"].update(status="unreviewed", message="AI review was unavailable. Previous research and saved outputs were kept; this attempt's source evidence is available below.")
+        _set_step(store, project, "research", "success", "Previous research retained; latest model review unavailable")
+        _finish(store, project, execution.id, "error", errors=result.warnings)
+        _save(store, project)
+        return result
+    project["research"] = result.model_dump()
     _set_step(
         store, project, "research", "success",
         f"{len(result.products)} candidates ({'live+sample' if result.contains_live_results else 'sample'})",
@@ -405,6 +415,7 @@ def step_manual_product(store: ProjectStore, project: dict, payload) -> dict:
     return _save(store, project)
 
 
+@project_operation
 def step_generate_store(
     store: ProjectStore, project: dict, design: Optional[StoreDesign] = None, extra_instructions: str = ""
 ) -> WebsiteSpec:
@@ -442,6 +453,7 @@ def _catalog_for(project: dict, product: Product) -> list[Product]:
     return rows
 
 
+@project_operation
 def step_edit_store(store: ProjectStore, project: dict, prompt: str) -> StoreEditResponse:
     spec_raw = project.get("store_spec")
     if not spec_raw:
@@ -459,6 +471,7 @@ def step_edit_store(store: ProjectStore, project: dict, prompt: str) -> StoreEdi
     return response
 
 
+@project_operation
 def step_generate_campaign(store: ProjectStore, project: dict, request: CampaignRequest) -> CampaignPlan:
     brief = _brief_of(project)
     product = _resolve_product(project, None, True)
@@ -602,6 +615,7 @@ def step_report(store: ProjectStore, project: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # Full workflow
 # --------------------------------------------------------------------------- #
+@project_operation
 def run_full_workflow(
     store: ProjectStore, project_id: str, auto_select: bool = True, mode: str = "live", force: bool = False
 ) -> dict[str, Any]:
