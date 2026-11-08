@@ -17,7 +17,7 @@ def test_claude_review_keeps_retrieved_prices_and_unknown_facts(monkeypatch, rev
     from commercepilot.tools.web_search import SearchOutcome, SearchResult
 
     monkeypatch.setattr(config, "CLAUDE_MODULES", {"product_hunting"})
-    monkeypatch.setattr(ph, "search", lambda *args, **kwargs: SearchOutcome(
+    monkeypatch.setattr(ph, "search_products", lambda *args, **kwargs: SearchOutcome(
         results=[SearchResult("Ceramic vase PKR 2500", "https://brand.example/products/vase", "Handmade ceramic vase")],
         provider="test", elapsed_ms=1))
 
